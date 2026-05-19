@@ -236,6 +236,10 @@
   }
   .tree .field:hover { background: var(--panel2); }
   .tree .field.sel { background: var(--sel); color: white; }
+  .tree .field.part {
+    background: rgba(86, 156, 214, 0.12);
+    box-shadow: inset 2px 0 0 0 var(--accent);
+  }
   .tree .field .v { color: var(--green); margin-left: 8px; }
   .tree .field .meta { color: var(--muted); margin-left: 8px; }
   .tree .group-eth > summary  { color: #d7ba7d; }
@@ -1357,7 +1361,18 @@ function buildPacket() {
 let CURRENT = null;       // {bytes, fields, layers, ...}
 let SEL = new Set();      // selected absolute bit indices (MSB-first per byte)
 let ANCHOR = null;        // last clicked bit index (for shift-extend)
-let SEL_FIELD_IDX = -1;   // index in CURRENT.fields, or -1
+// Field-tree highlight is computed from SEL, not tracked as a separate index.
+// (Tracking a single "selected field" idx broke ⌘-click multi-select: the tree
+// would show nothing highlighted, even though the bits were correctly selected.)
+function fieldFullySelected(f) {
+  if (!f.bitLen) return false;
+  for (let i = 0; i < f.bitLen; i++) if (!SEL.has(f.bitStart + i)) return false;
+  return true;
+}
+function fieldPartiallySelected(f) {
+  for (let i = 0; i < f.bitLen; i++) if (SEL.has(f.bitStart + i)) return true;
+  return false;
+}
 let SHOW_BITS = false;
 
 function selBits() { return Array.from(SEL).sort((a, b) => a - b); }
@@ -1516,13 +1531,11 @@ function onByteClick(idx, ev) {
   const bits = [];
   for (let i = 0; i < 8; i++) bits.push(idx * 8 + i);
   applyClick(bits, ev);
-  SEL_FIELD_IDX = -1;
   renderAll();
 }
 
 function onBitClick(bit, ev) {
   applyClick([bit], ev);
-  SEL_FIELD_IDX = -1;
   renderAll();
 }
 
@@ -1550,9 +1563,12 @@ function renderTree() {
     groupMap.get(key).fields.push(f);
   }
 
-  // Auto-open the group containing the currently selected tree field
-  if (SEL_FIELD_IDX >= 0 && SEL_FIELD_IDX < CURRENT.fields.length) {
-    OPEN_GROUPS.add(CURRENT.fields[SEL_FIELD_IDX].layer);
+  // Auto-open any group that contains a fully-selected field so the
+  // user always sees what's lit up. Partial-only selection (e.g. clicking
+  // a single byte that covers several sub-fields) does NOT auto-open —
+  // that would unfurl every group containing those bytes.
+  for (const f of CURRENT.fields) {
+    if (fieldFullySelected(f)) OPEN_GROUPS.add(f.layer);
   }
 
   for (const g of groups) {
@@ -1568,8 +1584,10 @@ function renderTree() {
 
     for (const f of g.fields) {
       const idx = CURRENT.fields.indexOf(f);
+      const full = fieldFullySelected(f);
+      const part = !full && fieldPartiallySelected(f);
       const a = document.createElement("span");
-      a.className = "field" + (SEL_FIELD_IDX === idx ? " sel" : "");
+      a.className = "field" + (full ? " sel" : "") + (part ? " part" : "");
       a.innerHTML = "&nbsp;&nbsp;" + escapeHtml(f.name) +
         '<span class="v">' + escapeHtml(String(f.hexValue)) + "</span>" +
         '<span class="meta">[' + f.bitLen + ' bit' + (f.bitLen !== 1 ? "s" : "") + ' @ +' + f.bitStart + ']</span>';
@@ -1608,9 +1626,6 @@ function selectField(idx, ev) {
   const bits = [];
   for (let i = 0; i < f.bitLen; i++) bits.push(f.bitStart + i);
   applyClick(bits, ev || {});
-  // Only show field as "selected" in tree when this click resulted in exactly that field
-  if (ev && (ev.shiftKey || ev.metaKey || ev.ctrlKey)) SEL_FIELD_IDX = -1;
-  else SEL_FIELD_IDX = idx;
   renderAll();
 }
 
@@ -1739,19 +1754,28 @@ function generateUDF() {
   out.textContent = rules.length ? rules.join("\n") : "(no rule – selection sits outside the reference layer)";
 
   // selection summary
-  const f = (SEL_FIELD_IDX >= 0) ? CURRENT.fields[SEL_FIELD_IDX] : null;
   const where = layerLabel(
     layer === "vlan" ? "ethernet" :
     layer === "mpls" ? "mpls0" :
     layer
   );
   const blocks = countContiguousBlocks(selectedBits);
-  const head = f
-    ? `<b>${escapeHtml(f.name)}</b> (${f.bitLen} bit${f.bitLen!==1?"s":""}) `
-    : `<b>${SEL.size} bit${SEL.size!==1?"s":""}</b> in ${blocks} block${blocks!==1?"s":""} `;
+  const fully = CURRENT.fields.filter(fieldFullySelected);
+  let head;
+  if (fully.length === 1) {
+    const f = fully[0];
+    head = `<b>${escapeHtml(f.name)}</b> (${f.bitLen} bit${f.bitLen!==1?"s":""}) `;
+  } else if (fully.length > 1) {
+    // Cap the listed names to keep the bar compact
+    const names = fully.slice(0, 4).map(f => escapeHtml(f.name)).join(", ");
+    const more = (fully.length > 4) ? `, +${fully.length - 4}` : "";
+    head = `<b>${fully.length} fields</b> [${names}${more}] (${SEL.size} bit${SEL.size!==1?"s":""}) `;
+  } else {
+    head = `<b>${SEL.size} bit${SEL.size!==1?"s":""}</b> in ${blocks} block${blocks!==1?"s":""} `;
+  }
   meta.innerHTML = head +
     `· reference: <b>${where}</b> · ${wordOffsets.length} word${wordOffsets.length!==1?"s":""}: ${wordOffsets.map(w => "offset " + w).join(", ")}` +
-    (f ? ` · value: <span class="mono">${escapeHtml(String(f.hexValue))}</span>` : "");
+    (fully.length === 1 ? ` · value: <span class="mono">${escapeHtml(String(fully[0].hexValue))}</span>` : "");
 }
 
 function countContiguousBlocks(sortedBits) {
@@ -1776,7 +1800,6 @@ function rebuild() {
   const last = CURRENT.bytes.length * 8;
   for (const b of SEL) if (b >= last) SEL.delete(b);
   if (ANCHOR !== null && ANCHOR >= last) ANCHOR = null;
-  if (SEL_FIELD_IDX >= 0 && SEL_FIELD_IDX >= CURRENT.fields.length) SEL_FIELD_IDX = -1;
   renderAll();
 }
 
@@ -1898,7 +1921,7 @@ function wire() {
     }
   });
   $("btnRedraw").addEventListener("click", rebuild);
-  $("btnClear").addEventListener("click", () => { SEL.clear(); ANCHOR = null; SEL_FIELD_IDX = -1; renderAll(); });
+  $("btnClear").addEventListener("click", () => { SEL.clear(); ANCHOR = null; renderAll(); });
   $("showBits").addEventListener("change", () => { SHOW_BITS = $("showBits").checked; renderAll(); });
   $("btnTreeExpand").addEventListener("click", () => {
     for (const f of (CURRENT ? CURRENT.fields : [])) OPEN_GROUPS.add(f.layer);
