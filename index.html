@@ -24,6 +24,7 @@
     --hl-ip: #1f2a3a;
     --hl-tcp: #2f1f3a;
     --hl-udp: #3a1f2f;
+    --hl-icmp: #1f3a25;
     --hl-gre: #1f3a3a;
     --hl-erspan: #3a1f1f;
     --hl-pl: #2a2a1f;
@@ -210,6 +211,7 @@
   .byte.ip  { background: var(--hl-ip); }
   .byte.tcp { background: var(--hl-tcp); }
   .byte.udp { background: var(--hl-udp); }
+  .byte.icmp { background: var(--hl-icmp); }
   .byte.gre { background: var(--hl-gre); }
   .byte.erspan { background: var(--hl-erspan); }
   .byte.pl, .byte.payload  { background: var(--hl-pl); }
@@ -478,6 +480,7 @@
       <label class="inline"><input type="radio" name="l4" id="l4None" value="none"/> None</label>
       <label class="inline"><input type="radio" name="l4" id="l4Tcp"  value="tcp" checked/> TCP</label>
       <label class="inline"><input type="radio" name="l4" id="l4Udp"  value="udp"/> UDP</label>
+      <label class="inline"><input type="radio" name="l4" id="l4Icmp" value="icmp"/> ICMP</label>
 
       <div id="l4TcpFields">
         <div class="row">
@@ -512,6 +515,30 @@
           <div><label>Src port</label><input type="number" id="udpSrc" value="12345" min="0" max="65535"/></div>
           <div><label>Dst port</label><input type="number" id="udpDst" value="53"    min="0" max="65535"/></div>
         </div>
+      </div>
+
+      <div id="l4IcmpFields" style="display:none">
+        <div class="row">
+          <div>
+            <label>Type</label>
+            <select id="icmpType">
+              <option value="0">0 Echo Reply</option>
+              <option value="3">3 Destination Unreachable</option>
+              <option value="5">5 Redirect</option>
+              <option value="8" selected>8 Echo Request</option>
+              <option value="11">11 Time Exceeded</option>
+              <option value="12">12 Parameter Problem</option>
+              <option value="13">13 Timestamp</option>
+              <option value="14">14 Timestamp Reply</option>
+              <option value="custom">custom…</option>
+            </select>
+            <input type="number" id="icmpTypeCustom" min="0" max="255" value="0" style="display:none;margin-top:4px"/>
+          </div>
+          <div><label>Code</label><input type="number" id="icmpCode" value="0" min="0" max="255"/></div>
+        </div>
+        <label>Rest of header (4 bytes, hex)</label>
+        <input class="mono" id="icmpRest" value="0x00000000"/>
+        <div class="hint">For Echo Request/Reply this is Identifier(16) + Sequence(16). Checksum is auto-computed over the whole ICMP message.</div>
       </div>
       </div>
     </details>
@@ -710,6 +737,7 @@
       <span><span class="sw" style="background:var(--hl-ip)"></span>IPv4</span>
       <span><span class="sw" style="background:var(--hl-tcp)"></span>TCP</span>
       <span><span class="sw" style="background:var(--hl-udp)"></span>UDP</span>
+      <span><span class="sw" style="background:var(--hl-icmp)"></span>ICMP</span>
       <span><span class="sw" style="background:var(--hl-gre)"></span>GRE</span>
       <span><span class="sw" style="background:var(--hl-erspan)"></span>ERSPAN</span>
       <span><span class="sw" style="background:var(--hl-pl)"></span>Payload</span>
@@ -745,6 +773,7 @@
             <option value="ip">L3 IPv4 — uses "permit ip any any"</option>
             <option value="tcp">L4 TCP</option>
             <option value="udp">L4 UDP</option>
+            <option value="icmp">L4 ICMP</option>
             <option value="gre">GRE (ERSPAN carrier)</option>
             <option value="erspan">ERSPAN header</option>
             <option value="payload">L7 payload</option>
@@ -1235,6 +1264,33 @@ function buildPacket() {
     fields.push({ layer: "udp", name: "UDP Checksum", bitStart: csP * 8, bitLen: 16, value: 0, hexValue: "0x0000" });
 
     markLayerEnd("udp");
+  } else if (l4Type === "icmp") {
+    markLayerStart("icmp");
+    const tSel = $("icmpType").value;
+    const type = (tSel === "custom") ? ((+$("icmpTypeCustom").value) & 0xff) : ((+tSel) & 0xff);
+    const code = (+$("icmpCode").value) & 0xff;
+    const rest = parseHex32($("icmpRest").value);
+
+    const tP = bytes.length;
+    bytes.push(type);
+    fields.push({ layer: "icmp", name: "ICMP Type", bitStart: tP * 8, bitLen: 8, value: type, hexValue: String(type) });
+
+    const cP = bytes.length;
+    bytes.push(code);
+    fields.push({ layer: "icmp", name: "ICMP Code", bitStart: cP * 8, bitLen: 8, value: code, hexValue: String(code) });
+
+    const csP = bytes.length;
+    bytes.push(0, 0); // checksum – patched after payload
+    fields.push({ layer: "icmp", name: "ICMP Checksum", bitStart: csP * 8, bitLen: 16, value: 0, hexValue: "0x0000" });
+
+    const rP = bytes.length;
+    bytes.push((rest >>> 24) & 0xff, (rest >>> 16) & 0xff, (rest >>> 8) & 0xff, rest & 0xff);
+    // Whole 4-byte "rest of header" + a split view that makes sense for Echo
+    fields.push({ layer: "icmp", name: "ICMP Rest of Header", bitStart: rP * 8, bitLen: 32, value: rest, hexValue: "0x" + hex8(rest) });
+    fields.push({ layer: "icmp", name: "  · Identifier (Echo)",     bitStart: rP * 8,      bitLen: 16, value: (rest >>> 16) & 0xffff, hexValue: "0x" + hex4((rest >>> 16) & 0xffff) });
+    fields.push({ layer: "icmp", name: "  · Sequence Number (Echo)", bitStart: rP * 8 + 16, bitLen: 16, value: rest & 0xffff,         hexValue: "0x" + hex4(rest & 0xffff) });
+
+    markLayerEnd("icmp");
   }
 
   // ---------- Payload (outer; skipped when ERSPAN carries an inner frame) ----------
@@ -1275,6 +1331,17 @@ function buildPacket() {
     const f = fields.find((x) => x.name === "UDP Length");
     f.value = udpLen;
     f.hexValue = udpLen + " (0x" + hex4(udpLen) + ")";
+  }
+
+  // ICMP checksum (over the whole ICMP message – header + payload)
+  if (l4Type === "icmp") {
+    const ic = layers.icmp;
+    const icmpBytes = bytes.slice(ic.byteStart, bytes.length);
+    const icCsum = ipChecksum(icmpBytes);
+    bytes[ic.byteStart + 2] = (icCsum >> 8) & 0xff;
+    bytes[ic.byteStart + 3] = icCsum & 0xff;
+    const f = fields.find((x) => x.name === "ICMP Checksum");
+    if (f) { f.value = icCsum; f.hexValue = "0x" + hex4(icCsum); }
   }
 
   // ---------- Inner-frame fixups (when ERSPAN carries one) ----------
@@ -1464,7 +1531,7 @@ function layerOfByte(byteIdx) {
   const order = [
     "in-payload","in-udp","in-tcp","in-ip","in-vlan","in-ethernet",
     "erspan","gre",
-    "payload","udp","tcp","ip",
+    "payload","icmp","udp","tcp","ip",
     "mpls5","mpls4","mpls3","mpls2","mpls1","mpls0",
     "vlan1","vlan0","ethernet",
   ];
@@ -1663,6 +1730,7 @@ function layerLabel(layer) {
     case "ip":           return "IPv4";
     case "tcp":          return "TCP";
     case "udp":          return "UDP";
+    case "icmp":         return "ICMP";
     case "gre":          return "GRE";
     case "erspan":       return "ERSPAN";
     case "payload":      return "Payload";
@@ -1714,7 +1782,7 @@ function pickReferenceLayer(selBitStart) {
   const order = [
     "in-payload","in-udp","in-tcp","in-ip","in-vlan","in-ethernet",
     "erspan","gre",
-    "payload","udp","tcp","ip",
+    "payload","icmp","udp","tcp","ip",
     "mpls5","mpls4","mpls3","mpls2","mpls1","mpls0",
     "vlan1","vlan0","ethernet",
   ];
@@ -1937,42 +2005,47 @@ function wire() {
   $("mplsCount").addEventListener("change", () => { renderMplsStack(); rebuild(); });
   $("mplsCount").addEventListener("input",  () => { renderMplsStack(); rebuild(); });
 
-  // L4 radio: toggle TCP/UDP visibility AND sync the IPv4 Protocol dropdown.
+  // Shared helper: keep the L4 sub-field visibility in lockstep with the radio
+  function syncL4Visibility(v) {
+    $("l4TcpFields").style.display  = (v === "tcp")  ? "" : "none";
+    $("l4UdpFields").style.display  = (v === "udp")  ? "" : "none";
+    $("l4IcmpFields").style.display = (v === "icmp") ? "" : "none";
+  }
+
+  // L4 radio: toggle TCP/UDP/ICMP visibility AND sync the IPv4 Protocol dropdown.
   // (Both fire rebuild() via the generic .sidebar listener, so the Field Tree
   // refreshes automatically.)
   for (const r of document.querySelectorAll('input[name="l4"]')) {
     r.addEventListener("change", () => {
       const v = document.querySelector('input[name="l4"]:checked').value;
-      $("l4TcpFields").style.display = (v === "tcp") ? "" : "none";
-      $("l4UdpFields").style.display = (v === "udp") ? "" : "none";
-      // Mirror into IPv4 Protocol: TCP→6, UDP→17. Leave Protocol alone when
-      // L4=None, so the user can keep a custom/ICMP/GRE value.
-      if (v === "tcp" || v === "udp") {
-        const target = (v === "tcp") ? "6" : "17";
-        if ($("ipProto").value !== target) {
-          $("ipProto").value = target;
-          $("ipProtoCustom").style.display = "none";
-        }
+      syncL4Visibility(v);
+      // Mirror into IPv4 Protocol: TCP→6, UDP→17, ICMP→1. Leave Protocol alone
+      // when L4=None, so the user can keep a GRE / custom value.
+      const targetProto = (v === "tcp") ? "6" : (v === "udp") ? "17" : (v === "icmp") ? "1" : null;
+      if (targetProto !== null && $("ipProto").value !== targetProto) {
+        $("ipProto").value = targetProto;
+        $("ipProtoCustom").style.display = "none";
       }
     });
   }
-  // IPv4 Protocol → mirror back into the L4 radio: 6→TCP, 17→UDP, anything
-  // else → None (so the hidden TCP/UDP fields aren't built into the packet).
+  // IPv4 Protocol → mirror back into the L4 radio: 6→TCP, 17→UDP, 1→ICMP,
+  // anything else → None.
   $("ipProto").addEventListener("change", () => {
     $("ipProtoCustom").style.display = ($("ipProto").value === "custom") ? "" : "none";
     const v = $("ipProto").value;
-    let target = "none";
-    if (v === "6")  target = "tcp";
-    else if (v === "17") target = "udp";
+    const target = (v === "6") ? "tcp" : (v === "17") ? "udp" : (v === "1") ? "icmp" : "none";
     const cur = (document.querySelector('input[name="l4"]:checked') || { value: "none" }).value;
     if (cur !== target) {
       const radio = document.querySelector('input[name="l4"][value="' + target + '"]');
       if (radio) {
         radio.checked = true;
-        $("l4TcpFields").style.display = (target === "tcp") ? "" : "none";
-        $("l4UdpFields").style.display = (target === "udp") ? "" : "none";
+        syncL4Visibility(target);
       }
     }
+  });
+  // ICMP type "custom" sub-input
+  $("icmpType").addEventListener("change", () => {
+    $("icmpTypeCustom").style.display = ($("icmpType").value === "custom") ? "" : "none";
   });
 
   // ERSPAN
