@@ -539,7 +539,11 @@
             </select>
             <input type="number" id="icmpTypeCustom" min="0" max="255" value="0" style="display:none;margin-top:4px"/>
           </div>
-          <div><label>Code</label><input type="number" id="icmpCode" value="0" min="0" max="255"/></div>
+          <div>
+            <label>Code</label>
+            <select id="icmpCode"><option value="0">0</option></select>
+            <input type="number" id="icmpCodeCustom" min="0" max="255" value="0" style="display:none;margin-top:4px"/>
+          </div>
         </div>
         <label>Rest of header (4 bytes, hex)</label>
         <input class="mono" id="icmpRest" value="0x00000000"/>
@@ -1350,7 +1354,8 @@ function buildPacket() {
     markLayerStart("icmp");
     const tSel = $("icmpType").value;
     const type = (tSel === "custom") ? ((+$("icmpTypeCustom").value) & 0xff) : ((+tSel) & 0xff);
-    const code = (+$("icmpCode").value) & 0xff;
+    const cSel = $("icmpCode").value;
+    const code = (cSel === "custom") ? ((+$("icmpCodeCustom").value) & 0xff) : ((+cSel) & 0xff);
     const rest = parseHex32($("icmpRest").value);
 
     const tP = bytes.length;
@@ -2063,6 +2068,74 @@ function renderMplsStack() {
   });
 }
 
+// Per-Type ICMP code dictionary (RFC 792 + IANA). Each entry is a list of
+// {value, label} options. Types without a dedicated list fall back to a single
+// "0" entry plus a custom option, so any byte value is still reachable.
+const ICMP_CODES = {
+  0:  [[0, "Echo Reply"]],
+  3:  [
+    [0, "Net Unreachable"],
+    [1, "Host Unreachable"],
+    [2, "Protocol Unreachable"],
+    [3, "Port Unreachable"],
+    [4, "Fragmentation Needed and DF set"],
+    [5, "Source Route Failed"],
+    [6, "Destination Network Unknown"],
+    [7, "Destination Host Unknown"],
+    [8, "Source Host Isolated"],
+    [9, "Network Administratively Prohibited"],
+    [10, "Host Administratively Prohibited"],
+    [11, "Network Unreachable for TOS"],
+    [12, "Host Unreachable for TOS"],
+    [13, "Communication Administratively Prohibited"],
+    [14, "Host Precedence Violation"],
+    [15, "Precedence cutoff in effect"],
+  ],
+  5:  [
+    [0, "Redirect for the Network"],
+    [1, "Redirect for the Host"],
+    [2, "Redirect for the TOS and Network"],
+    [3, "Redirect for the TOS and Host"],
+  ],
+  8:  [[0, "Echo Request"]],
+  11: [
+    [0, "TTL exceeded in transit"],
+    [1, "Fragment reassembly time exceeded"],
+  ],
+  12: [
+    [0, "Pointer indicates the error"],
+    [1, "Missing a required option"],
+    [2, "Bad length"],
+  ],
+  13: [[0, "Timestamp"]],
+  14: [[0, "Timestamp Reply"]],
+};
+
+function renderIcmpCodes() {
+  const sel = $("icmpCode");
+  if (!sel) return;
+  // Resolve current type (numeric or "custom")
+  const t = $("icmpType").value;
+  const typeNum = (t === "custom") ? ((+$("icmpTypeCustom").value) & 0xff) : (+t);
+  const opts = ICMP_CODES[typeNum] || [[0, "0"]];
+  const prev = sel.value;
+  sel.innerHTML = "";
+  for (const [v, lbl] of opts) {
+    const o = document.createElement("option");
+    o.value = String(v);
+    o.textContent = (lbl === String(v) ? lbl : String(v) + " · " + lbl);
+    sel.appendChild(o);
+  }
+  // Always offer a custom escape hatch
+  const oc = document.createElement("option");
+  oc.value = "custom"; oc.textContent = "custom…";
+  sel.appendChild(oc);
+  // Preserve previous selection if still valid; otherwise pick the first option
+  const stillValid = Array.from(sel.options).some((o) => o.value === prev);
+  sel.value = stillValid ? prev : opts[0][0].toString();
+  $("icmpCodeCustom").style.display = (sel.value === "custom") ? "" : "none";
+}
+
 function syncErspanVisibility() {
   const v = (document.querySelector('input[name="erspan"]:checked') || { value: "none" }).value;
   const on   = v !== "none";
@@ -2151,6 +2224,10 @@ function wire() {
   // ICMP type "custom" sub-input
   $("icmpType").addEventListener("change", () => {
     $("icmpTypeCustom").style.display = ($("icmpType").value === "custom") ? "" : "none";
+    renderIcmpCodes();
+  });
+  $("icmpCode").addEventListener("change", () => {
+    $("icmpCodeCustom").style.display = ($("icmpCode").value === "custom") ? "" : "none";
   });
 
   // ERSPAN
@@ -2221,8 +2298,9 @@ function wire() {
 }
 
 wire();
-// Initial UI state for ERSPAN/MPLS sub-sections
+// Initial UI state for ERSPAN/MPLS sub-sections + dependent dropdowns
 syncErspanVisibility();
+renderIcmpCodes();
 if ($("mplsEn").checked) renderMplsStack();
 rebuild();
 </script>
