@@ -28,7 +28,7 @@ No build step, no dependencies, no network.
 2. The hex pane shows the resulting bytes coloured by layer.
 3. Click a field in the tree, click bytes in the hex pane, or enable
    **Bit-level view** to click individual bits. Modifiers:
-   - plain click — replace the selection
+   - Plain click — replace the selection
    - **Shift-click** — extend a contiguous range from the previous click
    - **⌘ / Ctrl-click** — toggle (add or remove a *separate* block)
    - **Clear selection** — empty everything
@@ -39,14 +39,11 @@ No build step, no dependencies, no network.
    permit ip any any payload header start offset 0 pattern 0x45b80000 mask 0x0000ffff
    ```
 
-   - `offset` is in **4-byte words** from the start of the selected reference
-     layer (auto by default; selectable via the dropdown). So byte 8 of the IP
-     header → offset 2.
-   - `pattern`/`mask` are 32-bit, MSB-aligned. `mask` uses Cisco-style wildcard
-     (1 = ignore, 0 = care).
+   - The `offset` is in **4-byte words** from the start of the selected
+     reference layer (auto by default; selectable via the dropdown). So byte 8
+     of the IP header → offset 2.
+   - The `pattern` and `mask` are 32-bit, MSB-aligned. The `mask` is a reverse
+     wildcard mask (1 = ignore, 0 = care).
    - If your selection spans more than 4 bytes, multiple rules are emitted
      (all must match in the ACL).
 4. Hit **Copy** to put the rule on your clipboard.
-
-The **Header keyword** dropdown picks between `header end` (default) and
-`header start`, in case your EOS version / platform expects one or the other.
