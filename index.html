@@ -493,7 +493,7 @@
             <div><label>COS</label><input type="number" id="erspanCos" value="0" min="0" max="7"/></div>
           </div>
           <div class="row">
-            <div><label>Session ID</label><input type="number" id="erspanSession" value="1" min="0" max="1023"/></div>
+            <div><label>SPAN ID (a.k.a. Session ID / <span class="mono">erspan-id</span>)</label><input type="number" id="erspanSession" value="1" min="0" max="1023"/></div>
             <div><label>T (truncated)</label>
               <select id="erspanT"><option value="0" selected>0 not truncated</option><option value="1">1 truncated</option></select>
             </div>
@@ -1010,7 +1010,7 @@ function buildPacket() {
       recordBitField("erspan","COS",          eStart*8+16, 3,  cos,  String(cos));
       recordBitField("erspan","En",           eStart*8+19, 2,  en,   String(en));
       recordBitField("erspan","T",            eStart*8+21, 1,  tt,   String(tt));
-      recordBitField("erspan","Session ID",   eStart*8+22, 10, sid,  String(sid));
+      recordBitField("erspan","SPAN ID (Session)", eStart*8+22, 10, sid, String(sid));
 
       // 4 bytes: Reserved(12) Index(20)
       const w1 = idx & 0xfffff;
@@ -1028,7 +1028,7 @@ function buildPacket() {
       recordBitField("erspan","COS",          eStart*8+16, 3,  cos,  String(cos));
       recordBitField("erspan","BSO",          eStart*8+19, 2,  bso,  String(bso));
       recordBitField("erspan","T",            eStart*8+21, 1,  tt,   String(tt));
-      recordBitField("erspan","Session ID",   eStart*8+22, 10, sid,  String(sid));
+      recordBitField("erspan","SPAN ID (Session)", eStart*8+22, 10, sid, String(sid));
 
       pushU32("erspan","Timestamp", parseHex32($("erspan3Ts").value));
 
