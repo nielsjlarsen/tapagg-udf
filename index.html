@@ -702,12 +702,7 @@
   </aside>
 
   <main class="main">
-    <div class="panel-h2" style="display:flex;align-items:center;gap:12px">
-      <span>Packet bytes (Wireshark-style)</span>
-      <label class="inline" style="margin-left:auto;color:var(--text);text-transform:none;letter-spacing:0;font-size:12px">
-        <input type="checkbox" id="showBits" /> Bit-level view
-      </label>
-    </div>
+    <div class="panel-h2">Packet bytes (Wireshark-style)</div>
     <div class="legend-bar">
       <span><span class="sw" style="background:var(--hl-eth)"></span>Ethernet</span>
       <span><span class="sw" style="background:var(--hl-vlan)"></span>VLAN</span>
@@ -721,6 +716,11 @@
       <span><span class="sw" style="background:var(--hl-inner)"></span>Inner frame</span>
     </div>
     <div id="hex" class="hex-wrap"></div>
+    <div style="margin:6px 2px 12px 2px">
+      <label class="inline" style="color:var(--text);font-size:12px">
+        <input type="checkbox" id="showBits" /> Bit-level view
+      </label>
+    </div>
 
     <div class="panel-h2" style="display:flex;align-items:center;gap:10px">
       <span>Field tree</span>
