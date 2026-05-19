@@ -466,7 +466,11 @@
     </div>
     <div id="hex" class="hex-wrap"></div>
 
-    <div class="panel-h2">Field tree</div>
+    <div class="panel-h2" style="display:flex;align-items:center;gap:10px">
+      <span>Field tree</span>
+      <button id="btnTreeExpand" style="font-size:11px;padding:2px 6px">Expand all</button>
+      <button id="btnTreeCollapse" style="font-size:11px;padding:2px 6px">Collapse all</button>
+    </div>
     <div id="tree" class="tree"></div>
   </main>
 
@@ -1050,6 +1054,10 @@ function onBitClick(bit, ev) {
 // ============================================================================
 //  Field tree
 // ============================================================================
+// Tracks which layer groups are expanded so re-renders (e.g. after a hex click)
+// don't collapse them. Empty by default → groups start collapsed.
+const OPEN_GROUPS = new Set();
+
 function renderTree() {
   const host = $("tree");
   host.innerHTML = "";
@@ -1067,13 +1075,21 @@ function renderTree() {
     groupMap.get(key).fields.push(f);
   }
 
+  // Auto-open the group containing the currently selected tree field
+  if (SEL_FIELD_IDX >= 0 && SEL_FIELD_IDX < CURRENT.fields.length) {
+    OPEN_GROUPS.add(CURRENT.fields[SEL_FIELD_IDX].layer);
+  }
+
   for (const g of groups) {
     const det = document.createElement("details");
-    det.open = true;
+    det.open = OPEN_GROUPS.has(g.layer);
     det.className = "group-" + (g.layer.startsWith("vlan") ? "vlan" : g.layer);
     const sum = document.createElement("summary");
     sum.textContent = g.label + "  (" + g.fields.length + " fields)";
     det.appendChild(sum);
+    det.addEventListener("toggle", () => {
+      if (det.open) OPEN_GROUPS.add(g.layer); else OPEN_GROUPS.delete(g.layer);
+    });
 
     for (const f of g.fields) {
       const idx = CURRENT.fields.indexOf(f);
@@ -1302,6 +1318,14 @@ function wire() {
   $("btnRedraw").addEventListener("click", rebuild);
   $("btnClear").addEventListener("click", () => { SEL.clear(); ANCHOR = null; SEL_FIELD_IDX = -1; renderAll(); });
   $("showBits").addEventListener("change", () => { SHOW_BITS = $("showBits").checked; renderAll(); });
+  $("btnTreeExpand").addEventListener("click", () => {
+    for (const f of (CURRENT ? CURRENT.fields : [])) OPEN_GROUPS.add(f.layer);
+    renderTree();
+  });
+  $("btnTreeCollapse").addEventListener("click", () => {
+    OPEN_GROUPS.clear();
+    renderTree();
+  });
   $("refLayer").addEventListener("change", generateUDF);
   $("hdrKeyword").addEventListener("input", generateUDF);
   $("btnCopy").addEventListener("click", async () => {
