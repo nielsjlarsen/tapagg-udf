@@ -298,6 +298,13 @@
     margin-right: 6px;
   }
   details.optionsGroup > summary { color: var(--accent); cursor: pointer; font-size: 12px; margin-bottom: 6px; }
+  .tcp-flags {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 2px 10px;
+    padding: 4px 0 0 0;
+  }
+  .tcp-flags label.inline { margin: 2px 0; font-size: 11.5px; }
   .hint { color: var(--muted); font-size: 11.5px; margin-top: 4px; }
   .err  { color: var(--red); font-size: 12px; }
   .warn { color: var(--yellow); font-size: 12px; }
@@ -401,7 +408,18 @@
         <label>Ack</label><input class="mono" id="tcpAck" value="0x00000000" />
         <div class="row">
           <div><label>Data offset</label><input type="number" id="tcpDoff" value="5" min="5" max="15"/></div>
-          <div><label>Flags (9 bits)</label><input type="number" id="tcpFlags" value="2" min="0" max="511"/></div>
+          <div><label>Flags</label><span id="tcpFlagsHex" class="mono" style="color:var(--green)">0x002 · SYN</span></div>
+        </div>
+        <div class="tcp-flags">
+          <label class="inline"><input type="checkbox" class="tcpFlag" data-bit="8" id="tcpFlagNS"/> NS</label>
+          <label class="inline"><input type="checkbox" class="tcpFlag" data-bit="7" id="tcpFlagCWR"/> CWR</label>
+          <label class="inline"><input type="checkbox" class="tcpFlag" data-bit="6" id="tcpFlagECE"/> ECE</label>
+          <label class="inline"><input type="checkbox" class="tcpFlag" data-bit="5" id="tcpFlagURG"/> URG</label>
+          <label class="inline"><input type="checkbox" class="tcpFlag" data-bit="4" id="tcpFlagACK"/> ACK</label>
+          <label class="inline"><input type="checkbox" class="tcpFlag" data-bit="3" id="tcpFlagPSH"/> PSH</label>
+          <label class="inline"><input type="checkbox" class="tcpFlag" data-bit="2" id="tcpFlagRST"/> RST</label>
+          <label class="inline"><input type="checkbox" class="tcpFlag" data-bit="1" id="tcpFlagSYN" checked/> SYN</label>
+          <label class="inline"><input type="checkbox" class="tcpFlag" data-bit="0" id="tcpFlagFIN"/> FIN</label>
         </div>
         <div class="row">
           <div><label>Window</label><input type="number" id="tcpWin" value="65535" min="0" max="65535"/></div>
@@ -722,7 +740,27 @@ function buildPacket() {
     const sq = parseHex32($("tcpSeq").value);
     const ak = parseHex32($("tcpAck").value);
     const doff = (+$("tcpDoff").value) & 0xf;
-    const flg = (+$("tcpFlags").value) & 0x1ff;
+    // Flags: 9 individual bits, MSB-first inside the 9-bit field: NS, CWR, ECE, URG, ACK, PSH, RST, SYN, FIN
+    const TCP_FLAG_DEFS = [
+      { name: "NS",  id: "tcpFlagNS",  bit: 8 },
+      { name: "CWR", id: "tcpFlagCWR", bit: 7 },
+      { name: "ECE", id: "tcpFlagECE", bit: 6 },
+      { name: "URG", id: "tcpFlagURG", bit: 5 },
+      { name: "ACK", id: "tcpFlagACK", bit: 4 },
+      { name: "PSH", id: "tcpFlagPSH", bit: 3 },
+      { name: "RST", id: "tcpFlagRST", bit: 2 },
+      { name: "SYN", id: "tcpFlagSYN", bit: 1 },
+      { name: "FIN", id: "tcpFlagFIN", bit: 0 },
+    ];
+    let flg = 0;
+    const setFlags = [];
+    for (const f of TCP_FLAG_DEFS) {
+      if ($(f.id) && $(f.id).checked) { flg |= (1 << f.bit); setFlags.push(f.name); }
+    }
+    if ($("tcpFlagsHex")) {
+      $("tcpFlagsHex").textContent = "0x" + flg.toString(16).padStart(3, "0") +
+        (setFlags.length ? " · " + setFlags.join("+") : " · (none)");
+    }
     const win = (+$("tcpWin").value) & 0xffff;
     const urg = (+$("tcpUrg").value) & 0xffff;
 
@@ -748,7 +786,23 @@ function buildPacket() {
     bytes.push((word >> 8) & 0xff, word & 0xff);
     fields.push({ layer: "tcp", name: "Data Offset", bitStart: dfP * 8, bitLen: 4, value: doff, hexValue: String(doff) });
     fields.push({ layer: "tcp", name: "Reserved",    bitStart: dfP * 8 + 4, bitLen: 3, value: 0, hexValue: "0" });
-    fields.push({ layer: "tcp", name: "Flags",       bitStart: dfP * 8 + 7, bitLen: 9, value: flg, hexValue: "0b" + flg.toString(2).padStart(9, "0") });
+    fields.push({
+      layer: "tcp", name: "Flags (all 9)",
+      bitStart: dfP * 8 + 7, bitLen: 9, value: flg,
+      hexValue: "0x" + flg.toString(16).padStart(3, "0") + (setFlags.length ? " · " + setFlags.join("+") : " · (none)"),
+    });
+    // Per-flag fields: bit 8 (NS) is the MSB → absolute bit = dfP*8 + 7 + (8 - bit) = dfP*8 + 15 - bit
+    for (const f of TCP_FLAG_DEFS) {
+      const on = ($(f.id) && $(f.id).checked) ? 1 : 0;
+      fields.push({
+        layer: "tcp",
+        name: "  · " + f.name,
+        bitStart: dfP * 8 + 15 - f.bit,
+        bitLen: 1,
+        value: on,
+        hexValue: on ? "1 (set)" : "0",
+      });
+    }
 
     const wnP = bytes.length;
     bytes.push((win >> 8) & 0xff, win & 0xff);
