@@ -434,10 +434,8 @@
     <details class="sidebarSection" id="fsIp">
       <summary>Layer 3 – IPv4</summary>
       <div class="sectionBody">
-      <div class="row">
-        <div><label>Version</label><input type="number" id="ipVer" value="4" min="0" max="15" /></div>
-        <div><label>IHL (32-bit words)</label><input type="number" id="ipIhl" value="5" min="5" max="15" /></div>
-      </div>
+      <label>IHL (32-bit words)</label>
+      <input type="number" id="ipIhl" value="5" min="5" max="15" />
       <div class="row">
         <div><label>DSCP (0–63)</label><input type="number" id="ipDscp" value="46" min="0" max="63" /></div>
         <div><label>ECN (0–3)</label><input type="number" id="ipEcn" value="0" min="0" max="3" /></div>
@@ -445,7 +443,14 @@
       <label>Identification</label>
       <input class="mono" id="ipId" value="0x1234" />
       <div class="row">
-        <div><label>Flags (0–7)</label><input type="number" id="ipFlags" value="2" min="0" max="7" /></div>
+        <div>
+          <label>Flags <span id="ipFlagsHex" class="mono" style="color:var(--green);font-weight:normal">0b010 · DF</span></label>
+          <div class="tcp-flags">
+            <label class="inline"><input type="checkbox" id="ipFlagRES" disabled/> Reserved</label>
+            <label class="inline"><input type="checkbox" id="ipFlagDF" checked/> DF</label>
+            <label class="inline"><input type="checkbox" id="ipFlagMF"/> MF</label>
+          </div>
+        </div>
         <div><label>Frag offset</label><input type="number" id="ipFrag" value="0" min="0" max="8191" /></div>
       </div>
       <div class="row">
@@ -967,7 +972,7 @@ function buildPacket() {
 
   // ---------- IPv4 ----------
   markLayerStart("ip");
-  const ver = (+$("ipVer").value) & 0xf;
+  const ver = 4; // UDF only supports IPv4
   let ihl = (+$("ipIhl").value) & 0xf;
   const dscp = (+$("ipDscp").value) & 0x3f;
   const ecn  = (+$("ipEcn").value) & 0x3;
@@ -980,7 +985,19 @@ function buildPacket() {
 
   const ipHdrLen = ihl * 4;
   const id    = parseHex16($("ipId").value);
-  const flags = (+$("ipFlags").value) & 7;
+  // IPv4 Flags (3 bits, MSB-first): Reserved | DF | MF
+  const flagRes = $("ipFlagRES").checked ? 1 : 0;
+  const flagDf  = $("ipFlagDF").checked  ? 1 : 0;
+  const flagMf  = $("ipFlagMF").checked  ? 1 : 0;
+  const flags   = (flagRes << 2) | (flagDf << 1) | flagMf;
+  const flagNames = [];
+  if (flagRes) flagNames.push("Reserved");
+  if (flagDf)  flagNames.push("DF");
+  if (flagMf)  flagNames.push("MF");
+  if ($("ipFlagsHex")) {
+    $("ipFlagsHex").textContent = "0b" + flags.toString(2).padStart(3, "0") +
+      (flagNames.length ? " · " + flagNames.join("+") : " · (none)");
+  }
   const frag  = (+$("ipFrag").value) & 0x1fff;
   const ttl   = (+$("ipTtl").value) & 0xff;
   let proto;
@@ -1024,7 +1041,14 @@ function buildPacket() {
   const ffHi = ((flags & 7) << 5) | ((frag >> 8) & 0x1f);
   const ffLo = frag & 0xff;
   bytes.push(ffHi, ffLo);
-  fields.push({ layer: "ip", name: "Flags",          bitStart: ffPos * 8,     bitLen: 3,  value: flags, hexValue: "0b" + flags.toString(2).padStart(3, "0") });
+  fields.push({
+    layer: "ip", name: "Flags (all 3)",
+    bitStart: ffPos * 8, bitLen: 3, value: flags,
+    hexValue: "0b" + flags.toString(2).padStart(3, "0") + (flagNames.length ? " · " + flagNames.join("+") : " · (none)"),
+  });
+  fields.push({ layer: "ip", name: "  · Reserved", bitStart: ffPos * 8,     bitLen: 1, value: flagRes, hexValue: flagRes ? "1 (set)" : "0" });
+  fields.push({ layer: "ip", name: "  · DF",       bitStart: ffPos * 8 + 1, bitLen: 1, value: flagDf,  hexValue: flagDf  ? "1 (set)" : "0" });
+  fields.push({ layer: "ip", name: "  · MF",       bitStart: ffPos * 8 + 2, bitLen: 1, value: flagMf,  hexValue: flagMf  ? "1 (set)" : "0" });
   fields.push({ layer: "ip", name: "Fragment Offset", bitStart: ffPos * 8 + 3, bitLen: 13, value: frag,  hexValue: String(frag) });
 
   // TTL, Protocol
