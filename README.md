@@ -42,5 +42,5 @@ No build step, no dependencies, no network.
      (all must match in the ACL).
 4. Hit **Copy** to put the rule on your clipboard.
 
-The "Header keyword" field lets you swap `header start` for whatever your
-platform/EOS version expects (e.g. `l3 header`, `ip header start`, etc.).
+The **Header keyword** dropdown picks between `header end` (default) and
+`header start`, in case your EOS version / platform expects one or the other.

@@ -491,7 +491,10 @@
         </select>
       </label>
       <label class="inline">Header keyword
-        <input class="mono" id="hdrKeyword" value="header start" style="width:140px"/>
+        <select id="hdrKeyword" class="mono" style="width:160px">
+          <option value="header end" selected>header end (default)</option>
+          <option value="header start">header start</option>
+        </select>
       </label>
       <button id="btnCopy">Copy</button>
     </div>
@@ -1216,7 +1219,7 @@ function generateUDF() {
   }
 
   const prefix = rulePrefix(layer);
-  const hdrKw  = $("hdrKeyword").value || "header start";
+  const hdrKw  = $("hdrKeyword").value || "header end";
 
   const wordOffsets = Array.from(wordsMap.keys()).sort((a, b) => a - b);
   const rules = [];
@@ -1327,7 +1330,7 @@ function wire() {
     renderTree();
   });
   $("refLayer").addEventListener("change", generateUDF);
-  $("hdrKeyword").addEventListener("input", generateUDF);
+  $("hdrKeyword").addEventListener("change", generateUDF);
   $("btnCopy").addEventListener("click", async () => {
     try {
       await navigator.clipboard.writeText($("udf").textContent);
