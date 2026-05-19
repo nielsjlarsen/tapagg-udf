@@ -1,0 +1,1268 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>Arista TapAgg UDF Builder</title>
+<style>
+  :root {
+    --bg: #1e1e1e;
+    --panel: #252526;
+    --panel2: #2d2d30;
+    --border: #3c3c3c;
+    --text: #d4d4d4;
+    --muted: #858585;
+    --accent: #569cd6;
+    --green: #4ec9b0;
+    --orange: #ce9178;
+    --yellow: #dcdcaa;
+    --red: #f48771;
+    --sel: #264f78;
+    --sel-strong: #094771;
+    --hl-eth: #3a2f1f;
+    --hl-vlan: #1f3a2f;
+    --hl-ip: #1f2a3a;
+    --hl-tcp: #2f1f3a;
+    --hl-udp: #3a1f2f;
+    --hl-pl: #2a2a1f;
+  }
+  html, body {
+    height: 100%;
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", sans-serif;
+    font-size: 13px;
+  }
+  header {
+    padding: 8px 14px;
+    border-bottom: 1px solid var(--border);
+    background: var(--panel);
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+  header h1 {
+    font-size: 14px;
+    font-weight: 600;
+    margin: 0;
+    color: var(--text);
+  }
+  header .sub {
+    color: var(--muted);
+    font-size: 12px;
+  }
+  .grid {
+    display: grid;
+    grid-template-columns: 320px 1fr;
+    grid-template-rows: 1fr auto;
+    height: calc(100vh - 41px);
+  }
+  .sidebar {
+    grid-row: 1 / span 2;
+    border-right: 1px solid var(--border);
+    background: var(--panel);
+    overflow-y: auto;
+    padding: 10px 12px;
+  }
+  .main {
+    overflow-y: auto;
+    padding: 10px 14px;
+  }
+  .output {
+    border-top: 1px solid var(--border);
+    background: var(--panel);
+    padding: 10px 14px;
+    max-height: 38vh;
+    overflow-y: auto;
+  }
+
+  fieldset {
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    margin: 0 0 10px 0;
+    padding: 6px 10px 10px 10px;
+  }
+  legend {
+    color: var(--accent);
+    font-size: 12px;
+    padding: 0 4px;
+  }
+  label {
+    display: block;
+    font-size: 12px;
+    color: var(--muted);
+    margin: 6px 0 2px;
+  }
+  label.inline {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    margin: 4px 8px 4px 0;
+    color: var(--text);
+  }
+  input[type="text"], input[type="number"], select {
+    width: 100%;
+    box-sizing: border-box;
+    background: var(--panel2);
+    color: var(--text);
+    border: 1px solid var(--border);
+    border-radius: 3px;
+    padding: 4px 6px;
+    font-family: inherit;
+    font-size: 12px;
+  }
+  input[type="number"] {
+    width: 80px;
+  }
+  input.mono, .mono {
+    font-family: "SF Mono", "Menlo", "Consolas", monospace;
+  }
+  .row { display: flex; gap: 8px; }
+  .row > * { flex: 1; }
+  button {
+    background: var(--panel2);
+    color: var(--text);
+    border: 1px solid var(--border);
+    border-radius: 3px;
+    padding: 4px 8px;
+    cursor: pointer;
+    font-family: inherit;
+    font-size: 12px;
+  }
+  button:hover { background: #383838; }
+  button.primary { background: var(--sel-strong); border-color: var(--accent); }
+  button.primary:hover { background: var(--sel); }
+
+  /* Hex view */
+  .hex-wrap {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 10px 12px;
+    font-family: "SF Mono", "Menlo", "Consolas", monospace;
+    font-size: 13px;
+    line-height: 1.55;
+    overflow-x: auto;
+    user-select: none;
+  }
+  .hex-row { white-space: nowrap; }
+  .hex-row .offset {
+    color: var(--muted);
+    margin-right: 14px;
+  }
+  .hex-row .ascii {
+    color: var(--muted);
+    margin-left: 14px;
+  }
+  .byte {
+    display: inline-block;
+    width: 1.5em;
+    text-align: center;
+    cursor: pointer;
+    border-radius: 2px;
+    padding: 0 1px;
+    margin: 0 0;
+  }
+  .byte + .byte { margin-left: 2px; }
+  .byte:hover { outline: 1px solid var(--accent); }
+  .byte.sel { background: var(--sel); color: white; }
+  .byte.eth { background: var(--hl-eth); }
+  .byte.vlan { background: var(--hl-vlan); }
+  .byte.ip  { background: var(--hl-ip); }
+  .byte.tcp { background: var(--hl-tcp); }
+  .byte.udp { background: var(--hl-udp); }
+  .byte.pl  { background: var(--hl-pl); }
+  .byte.sel.eth, .byte.sel.vlan, .byte.sel.ip, .byte.sel.tcp, .byte.sel.udp, .byte.sel.pl {
+    background: var(--sel);
+  }
+  .ascii .a {
+    display: inline-block;
+    width: 0.7em;
+    text-align: center;
+  }
+  .ascii .a.sel { background: var(--sel); color: white; }
+  .byte.part { box-shadow: inset 0 -2px 0 0 var(--accent); }
+
+  /* Bit row */
+  .bitrow {
+    margin-left: 4.5em;  /* aligned roughly with first byte (after offset col) */
+    line-height: 1;
+    margin-top: -4px;
+    margin-bottom: 6px;
+    font-size: 10px;
+    color: var(--muted);
+    white-space: nowrap;
+    user-select: none;
+  }
+  .bitcell {
+    display: inline-block;
+    width: 0.85em;
+    text-align: center;
+    cursor: pointer;
+    border-radius: 1px;
+    padding: 0;
+  }
+  .bitcell:hover { outline: 1px solid var(--accent); }
+  .bitcell.sel  { background: var(--sel); color: white; }
+  .bitgap { display: inline-block; width: 0.4em; }
+  .bytgap { display: inline-block; width: 0.3em; }
+  .bitnib { display: inline-block; width: 0.2em; }
+  .bithalfgap { display: inline-block; width: 0.5em; }
+
+  /* Tree */
+  .tree { font-family: "SF Mono", "Menlo", "Consolas", monospace; font-size: 12.5px; line-height: 1.55; }
+  .tree details { margin-left: 0; }
+  .tree summary {
+    cursor: pointer;
+    color: var(--accent);
+    padding: 1px 2px;
+    border-radius: 2px;
+  }
+  .tree summary:hover { background: var(--panel2); }
+  .tree .field {
+    cursor: pointer;
+    padding: 1px 2px;
+    border-radius: 2px;
+    display: block;
+    color: var(--text);
+  }
+  .tree .field:hover { background: var(--panel2); }
+  .tree .field.sel { background: var(--sel); color: white; }
+  .tree .field .v { color: var(--green); margin-left: 8px; }
+  .tree .field .meta { color: var(--muted); margin-left: 8px; }
+  .tree .group-eth > summary  { color: #d7ba7d; }
+  .tree .group-vlan > summary { color: #4ec9b0; }
+  .tree .group-ip  > summary  { color: #569cd6; }
+  .tree .group-tcp > summary  { color: #c586c0; }
+  .tree .group-udp > summary  { color: #f48771; }
+  .tree .group-pl  > summary  { color: #dcdcaa; }
+  .tree details[open] > summary::before { content: "▾ "; }
+  .tree details:not([open]) > summary::before { content: "▸ "; }
+
+  .panel-h2 {
+    font-size: 12px;
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    margin: 10px 2px 6px;
+  }
+  .legend-bar {
+    display: flex;
+    gap: 14px;
+    flex-wrap: wrap;
+    margin: 4px 0 10px;
+    font-size: 11.5px;
+    color: var(--muted);
+  }
+  .legend-bar .sw {
+    display: inline-block;
+    width: 10px;
+    height: 10px;
+    border-radius: 2px;
+    margin-right: 4px;
+    vertical-align: middle;
+  }
+
+  .udf-out {
+    background: #1b1b1b;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 10px 12px;
+    font-family: "SF Mono", "Menlo", "Consolas", monospace;
+    font-size: 13px;
+    color: var(--orange);
+    white-space: pre-wrap;
+    word-break: break-all;
+    min-height: 40px;
+  }
+  .udf-meta {
+    color: var(--muted);
+    font-size: 12px;
+    margin-bottom: 6px;
+  }
+  .udf-meta b { color: var(--text); font-weight: 600; }
+  .toolbar {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+    margin: 6px 0 8px;
+    flex-wrap: wrap;
+  }
+  .pill {
+    display: inline-block;
+    padding: 1px 6px;
+    border-radius: 8px;
+    background: var(--panel2);
+    color: var(--muted);
+    font-size: 11px;
+    margin-right: 6px;
+  }
+  details.optionsGroup > summary { color: var(--accent); cursor: pointer; font-size: 12px; margin-bottom: 6px; }
+  .hint { color: var(--muted); font-size: 11.5px; margin-top: 4px; }
+  .err  { color: var(--red); font-size: 12px; }
+  .warn { color: var(--yellow); font-size: 12px; }
+  hr { border: 0; border-top: 1px solid var(--border); margin: 8px 0; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Arista TapAgg UDF Builder</h1>
+  <span class="sub">Build a packet → click any field → copy the matching <code>permit ... payload header start offset N pattern X mask Y</code> rule.</span>
+</header>
+
+<div class="grid">
+  <aside class="sidebar">
+    <fieldset>
+      <legend>Layer 2 – Ethernet</legend>
+      <label>Destination MAC</label>
+      <input class="mono" id="ethDst" value="00:1c:73:00:00:01" />
+      <label>Source MAC</label>
+      <input class="mono" id="ethSrc" value="00:1c:73:00:00:02" />
+    </fieldset>
+
+    <fieldset>
+      <legend>VLAN tags</legend>
+      <label class="inline"><input type="checkbox" id="vlan1En" /> Outer VLAN (802.1Q)</label>
+      <div id="vlan1Fields" style="display:none">
+        <div class="row">
+          <div><label>TPID</label><input class="mono" id="vlan1Tpid" value="0x8100" /></div>
+          <div><label>PCP</label><input type="number" id="vlan1Pcp" min="0" max="7" value="0" /></div>
+        </div>
+        <div class="row">
+          <div><label>DEI</label><input type="number" id="vlan1Dei" min="0" max="1" value="0" /></div>
+          <div><label>VID</label><input type="number" id="vlan1Vid" min="0" max="4095" value="100" /></div>
+        </div>
+      </div>
+      <label class="inline"><input type="checkbox" id="vlan2En" /> Inner VLAN (Q-in-Q)</label>
+      <div id="vlan2Fields" style="display:none">
+        <div class="row">
+          <div><label>TPID</label><input class="mono" id="vlan2Tpid" value="0x8100" /></div>
+          <div><label>PCP</label><input type="number" id="vlan2Pcp" min="0" max="7" value="0" /></div>
+        </div>
+        <div class="row">
+          <div><label>DEI</label><input type="number" id="vlan2Dei" min="0" max="1" value="0" /></div>
+          <div><label>VID</label><input type="number" id="vlan2Vid" min="0" max="4095" value="200" /></div>
+        </div>
+      </div>
+    </fieldset>
+
+    <fieldset>
+      <legend>Layer 3 – IPv4</legend>
+      <div class="row">
+        <div><label>Version</label><input type="number" id="ipVer" value="4" min="0" max="15" /></div>
+        <div><label>IHL (32-bit words)</label><input type="number" id="ipIhl" value="5" min="5" max="15" /></div>
+      </div>
+      <div class="row">
+        <div><label>DSCP (0–63)</label><input type="number" id="ipDscp" value="46" min="0" max="63" /></div>
+        <div><label>ECN (0–3)</label><input type="number" id="ipEcn" value="0" min="0" max="3" /></div>
+      </div>
+      <label>Identification</label>
+      <input class="mono" id="ipId" value="0x1234" />
+      <div class="row">
+        <div><label>Flags (0–7)</label><input type="number" id="ipFlags" value="2" min="0" max="7" /></div>
+        <div><label>Frag offset</label><input type="number" id="ipFrag" value="0" min="0" max="8191" /></div>
+      </div>
+      <div class="row">
+        <div><label>TTL</label><input type="number" id="ipTtl" value="64" min="0" max="255" /></div>
+        <div>
+          <label>Protocol</label>
+          <select id="ipProto">
+            <option value="6">6 (TCP)</option>
+            <option value="17">17 (UDP)</option>
+            <option value="1">1 (ICMP)</option>
+            <option value="custom">custom…</option>
+          </select>
+          <input class="mono" id="ipProtoCustom" value="47" style="display:none;margin-top:4px" />
+        </div>
+      </div>
+      <label>Source IP</label>
+      <input class="mono" id="ipSrc" value="10.1.1.1" />
+      <label>Destination IP</label>
+      <input class="mono" id="ipDst" value="10.2.2.2" />
+      <details class="optionsGroup">
+        <summary>IPv4 options (raw bytes, hex)</summary>
+        <input class="mono" id="ipOptions" placeholder="(empty) or e.g. 01 01 04 04 ..." />
+        <div class="hint">Length is rounded up to a 4-byte boundary. IHL auto-updates.</div>
+      </details>
+    </fieldset>
+
+    <fieldset>
+      <legend>Layer 4</legend>
+      <label class="inline"><input type="radio" name="l4" id="l4None" value="none"/> None</label>
+      <label class="inline"><input type="radio" name="l4" id="l4Tcp"  value="tcp" checked/> TCP</label>
+      <label class="inline"><input type="radio" name="l4" id="l4Udp"  value="udp"/> UDP</label>
+
+      <div id="l4TcpFields">
+        <div class="row">
+          <div><label>Src port</label><input type="number" id="tcpSrc" value="12345" min="0" max="65535"/></div>
+          <div><label>Dst port</label><input type="number" id="tcpDst" value="80"    min="0" max="65535"/></div>
+        </div>
+        <label>Seq</label><input class="mono" id="tcpSeq" value="0x00000001" />
+        <label>Ack</label><input class="mono" id="tcpAck" value="0x00000000" />
+        <div class="row">
+          <div><label>Data offset</label><input type="number" id="tcpDoff" value="5" min="5" max="15"/></div>
+          <div><label>Flags (9 bits)</label><input type="number" id="tcpFlags" value="2" min="0" max="511"/></div>
+        </div>
+        <div class="row">
+          <div><label>Window</label><input type="number" id="tcpWin" value="65535" min="0" max="65535"/></div>
+          <div><label>Urg</label><input type="number" id="tcpUrg" value="0" min="0" max="65535"/></div>
+        </div>
+      </div>
+
+      <div id="l4UdpFields" style="display:none">
+        <div class="row">
+          <div><label>Src port</label><input type="number" id="udpSrc" value="12345" min="0" max="65535"/></div>
+          <div><label>Dst port</label><input type="number" id="udpDst" value="53"    min="0" max="65535"/></div>
+        </div>
+      </div>
+    </fieldset>
+
+    <fieldset>
+      <legend>Payload</legend>
+      <label>Bytes (hex)</label>
+      <input class="mono" id="payload" value="de ad be ef ca fe ba be" />
+      <div class="hint">Spaces optional. Example: <span class="mono">deadbeef</span></div>
+    </fieldset>
+
+    <div class="toolbar">
+      <button class="primary" id="btnRedraw">Rebuild packet</button>
+      <button id="btnClear">Clear selection</button>
+      <label class="inline" style="margin-left:auto"><input type="checkbox" id="showBits" /> Bit-level view</label>
+    </div>
+    <div class="hint">
+      Click = replace selection · Shift-click = extend to range ·
+      &#x2318;/Ctrl-click = toggle (add another block) ·
+      enable <b>Bit-level view</b> to pick individual bits.
+    </div>
+  </aside>
+
+  <main class="main">
+    <div class="panel-h2">Packet bytes (Wireshark-style)</div>
+    <div class="legend-bar">
+      <span><span class="sw" style="background:var(--hl-eth)"></span>Ethernet</span>
+      <span><span class="sw" style="background:var(--hl-vlan)"></span>VLAN</span>
+      <span><span class="sw" style="background:var(--hl-ip)"></span>IPv4</span>
+      <span><span class="sw" style="background:var(--hl-tcp)"></span>TCP</span>
+      <span><span class="sw" style="background:var(--hl-udp)"></span>UDP</span>
+      <span><span class="sw" style="background:var(--hl-pl)"></span>Payload</span>
+    </div>
+    <div id="hex" class="hex-wrap"></div>
+
+    <div class="panel-h2">Field tree</div>
+    <div id="tree" class="tree"></div>
+  </main>
+
+  <section class="output">
+    <div class="udf-meta">
+      <span class="pill">selected</span>
+      <span id="selSummary"><b>nothing</b> – click a field or drag-select bytes above</span>
+    </div>
+    <div class="toolbar">
+      <label class="inline">Reference layer
+        <select id="refLayer">
+          <option value="auto">auto (from selection)</option>
+          <option value="ip">L3 (IPv4) — uses "permit ip any any"</option>
+          <option value="ethernet">L2 (Ethernet) — uses "permit mac any any any"</option>
+          <option value="tcp">L4 (TCP)</option>
+          <option value="udp">L4 (UDP)</option>
+          <option value="payload">L7 (payload after L4)</option>
+        </select>
+      </label>
+      <label class="inline">Header keyword
+        <input class="mono" id="hdrKeyword" value="header start" style="width:140px"/>
+      </label>
+      <button id="btnCopy">Copy</button>
+    </div>
+    <div id="udf" class="udf-out">(select a field to generate the rule)</div>
+    <div id="udfWarn" class="warn" style="margin-top:6px"></div>
+  </section>
+</div>
+
+<script>
+// ============================================================================
+//  Arista TapAgg UDF Builder
+//  - Builds an Ethernet/[VLAN]/IPv4/[TCP|UDP]/payload frame from the UI
+//  - Tracks per-field bit offsets so a click can be translated into:
+//      permit ip any any payload header start offset N pattern 0xX mask 0xY
+//    where mask uses 1 = ignore (Cisco-style wildcard).
+// ============================================================================
+
+const $ = (id) => document.getElementById(id);
+
+// ---------- helpers ----------
+function parseHexByte(s) {
+  s = s.trim();
+  if (s.startsWith("0x") || s.startsWith("0X")) s = s.slice(2);
+  return parseInt(s, 16) & 0xff;
+}
+function parseHex16(s) {
+  s = s.trim();
+  if (s.startsWith("0x") || s.startsWith("0X")) s = s.slice(2);
+  return parseInt(s, 16) & 0xffff;
+}
+function parseHex32(s) {
+  s = s.trim();
+  if (s.startsWith("0x") || s.startsWith("0X")) s = s.slice(2);
+  return (parseInt(s, 16) >>> 0) & 0xffffffff;
+}
+function parseHexBytes(s) {
+  s = (s || "").replace(/0x/gi, "").replace(/[^0-9a-f]/gi, "");
+  if (s.length % 2 === 1) s = s + "0";
+  const out = [];
+  for (let i = 0; i < s.length; i += 2) out.push(parseInt(s.substr(i, 2), 16));
+  return out;
+}
+function parseMac(s) {
+  const parts = s.split(/[:\-\.]/).join("");
+  const out = [];
+  for (let i = 0; i < 12; i += 2) out.push(parseInt(parts.substr(i, 2), 16) || 0);
+  return out;
+}
+function parseIp(s) {
+  return s.split(".").map((x) => parseInt(x, 10) & 0xff);
+}
+function hex2(n) { return n.toString(16).padStart(2, "0"); }
+function hex4(n) { return n.toString(16).padStart(4, "0"); }
+function hex8(n) { return (n >>> 0).toString(16).padStart(8, "0"); }
+
+// Internet checksum (for IPv4 header only here)
+function ipChecksum(bytes) {
+  let sum = 0;
+  for (let i = 0; i < bytes.length; i += 2) {
+    sum += ((bytes[i] << 8) | (bytes[i + 1] || 0));
+  }
+  while (sum >> 16) sum = (sum & 0xffff) + (sum >> 16);
+  return (~sum) & 0xffff;
+}
+
+// ============================================================================
+//  Build packet
+// ============================================================================
+// Each field gets recorded as:
+//   { name, layer, bitStart, bitLen, value, hexValue }
+// where bitStart is in bits from the start of the whole packet (MSB-first).
+// Layers also have their own bitStart for layer-relative offset calculation.
+
+function buildPacket() {
+  const fields = [];
+  const layers = {}; // layer name -> { bitStart, byteStart, byteLen }
+  const bytes = [];
+
+  // helper: add a sequence of bytes for a field
+  function pushField(layer, name, byteArr, opts = {}) {
+    const bitStart = bytes.length * 8 + (opts.bitInByte || 0);
+    if (opts.bitLen) {
+      // sub-byte field: do NOT push bytes (the parent byte already pushed)
+      fields.push({
+        layer, name,
+        bitStart: opts.absBitStart, bitLen: opts.bitLen,
+        value: opts.value, hexValue: opts.hexValue,
+      });
+      return;
+    }
+    fields.push({
+      layer, name,
+      bitStart: bytes.length * 8, bitLen: byteArr.length * 8,
+      value: opts.value, hexValue: opts.hexValue || ("0x" + byteArr.map(hex2).join("")),
+    });
+    bytes.push(...byteArr);
+  }
+
+  function markLayerStart(name) {
+    layers[name] = { bitStart: bytes.length * 8, byteStart: bytes.length };
+  }
+  function markLayerEnd(name) {
+    layers[name].byteLen = bytes.length - layers[name].byteStart;
+  }
+
+  // ---------- Ethernet ----------
+  markLayerStart("ethernet");
+  const dstMac = parseMac($("ethDst").value);
+  const srcMac = parseMac($("ethSrc").value);
+  pushField("ethernet", "Destination MAC", dstMac, {
+    hexValue: dstMac.map(hex2).join(":"),
+  });
+  pushField("ethernet", "Source MAC", srcMac, {
+    hexValue: srcMac.map(hex2).join(":"),
+  });
+
+  // ---------- VLANs (inserted before ethertype) ----------
+  const vlans = [];
+  if ($("vlan1En").checked) vlans.push({
+    tpid: parseHex16($("vlan1Tpid").value),
+    pcp: +$("vlan1Pcp").value & 7,
+    dei: +$("vlan1Dei").value & 1,
+    vid: +$("vlan1Vid").value & 0xfff,
+    label: "Outer VLAN (802.1Q)",
+  });
+  if ($("vlan2En").checked) vlans.push({
+    tpid: parseHex16($("vlan2Tpid").value),
+    pcp: +$("vlan2Pcp").value & 7,
+    dei: +$("vlan2Dei").value & 1,
+    vid: +$("vlan2Vid").value & 0xfff,
+    label: "Inner VLAN (Q-in-Q)",
+  });
+
+  for (let i = 0; i < vlans.length; i++) {
+    const v = vlans[i];
+    markLayerStart("vlan" + i);
+    // TPID (2 bytes)
+    pushField("vlan" + i, v.label + " · TPID", [(v.tpid >> 8) & 0xff, v.tpid & 0xff], {
+      hexValue: "0x" + hex4(v.tpid),
+    });
+    // TCI: PCP(3) | DEI(1) | VID(12) – 2 bytes
+    const tciStart = bytes.length;
+    const tciHi = ((v.pcp & 7) << 5) | ((v.dei & 1) << 4) | ((v.vid >> 8) & 0x0f);
+    const tciLo = v.vid & 0xff;
+    bytes.push(tciHi, tciLo);
+    const tciAbs = tciStart * 8;
+    fields.push({ layer: "vlan" + i, name: v.label + " · PCP", bitStart: tciAbs, bitLen: 3, value: v.pcp, hexValue: String(v.pcp) });
+    fields.push({ layer: "vlan" + i, name: v.label + " · DEI", bitStart: tciAbs + 3, bitLen: 1, value: v.dei, hexValue: String(v.dei) });
+    fields.push({ layer: "vlan" + i, name: v.label + " · VID", bitStart: tciAbs + 4, bitLen: 12, value: v.vid, hexValue: String(v.vid) });
+    markLayerEnd("vlan" + i);
+  }
+
+  // EtherType (always 0x0800 for IPv4 in this builder)
+  pushField("ethernet", "EtherType", [0x08, 0x00], { hexValue: "0x0800" });
+  markLayerEnd("ethernet");
+
+  // ---------- IPv4 ----------
+  markLayerStart("ip");
+  const ver = (+$("ipVer").value) & 0xf;
+  let ihl = (+$("ipIhl").value) & 0xf;
+  const dscp = (+$("ipDscp").value) & 0x3f;
+  const ecn  = (+$("ipEcn").value) & 0x3;
+  let optBytes = parseHexBytes($("ipOptions").value);
+  // Pad options to 4-byte boundary
+  while (optBytes.length % 4 !== 0) optBytes.push(0);
+  const calcIhl = 5 + (optBytes.length / 4);
+  if (calcIhl !== ihl) ihl = calcIhl;
+  $("ipIhl").value = ihl;
+
+  const ipHdrLen = ihl * 4;
+  const id    = parseHex16($("ipId").value);
+  const flags = (+$("ipFlags").value) & 7;
+  const frag  = (+$("ipFrag").value) & 0x1fff;
+  const ttl   = (+$("ipTtl").value) & 0xff;
+  let proto;
+  if ($("ipProto").value === "custom") proto = parseHexByte($("ipProtoCustom").value);
+  else proto = (+$("ipProto").value) & 0xff;
+
+  const srcIp = parseIp($("ipSrc").value);
+  const dstIp = parseIp($("ipDst").value);
+
+  const ipStartByte = bytes.length;
+
+  // byte 0: version(4) | IHL(4)
+  const b0 = ((ver & 0xf) << 4) | (ihl & 0xf);
+  bytes.push(b0);
+  fields.push({ layer: "ip", name: "Version", bitStart: ipStartByte * 8,     bitLen: 4, value: ver, hexValue: String(ver) });
+  fields.push({ layer: "ip", name: "IHL",     bitStart: ipStartByte * 8 + 4, bitLen: 4, value: ihl, hexValue: String(ihl) + " (" + ipHdrLen + " bytes)" });
+
+  // byte 1: DSCP(6) | ECN(2)
+  const b1 = ((dscp & 0x3f) << 2) | (ecn & 3);
+  bytes.push(b1);
+  fields.push({ layer: "ip", name: "DSCP", bitStart: (ipStartByte + 1) * 8,     bitLen: 6, value: dscp, hexValue: String(dscp) });
+  fields.push({ layer: "ip", name: "ECN",  bitStart: (ipStartByte + 1) * 8 + 6, bitLen: 2, value: ecn,  hexValue: String(ecn) });
+
+  // Total Length – computed later, push placeholder for now
+  const totalLenPos = bytes.length;
+  bytes.push(0, 0);
+  fields.push({ layer: "ip", name: "Total Length", bitStart: totalLenPos * 8, bitLen: 16, value: 0, hexValue: "0x0000" });
+
+  // Identification
+  const idPos = bytes.length;
+  bytes.push((id >> 8) & 0xff, id & 0xff);
+  fields.push({ layer: "ip", name: "Identification", bitStart: idPos * 8, bitLen: 16, value: id, hexValue: "0x" + hex4(id) });
+
+  // Flags(3) | Frag offset(13)
+  const ffPos = bytes.length;
+  const ffHi = ((flags & 7) << 5) | ((frag >> 8) & 0x1f);
+  const ffLo = frag & 0xff;
+  bytes.push(ffHi, ffLo);
+  fields.push({ layer: "ip", name: "Flags",          bitStart: ffPos * 8,     bitLen: 3,  value: flags, hexValue: "0b" + flags.toString(2).padStart(3, "0") });
+  fields.push({ layer: "ip", name: "Fragment Offset", bitStart: ffPos * 8 + 3, bitLen: 13, value: frag,  hexValue: String(frag) });
+
+  // TTL, Protocol
+  const ttlPos = bytes.length;
+  bytes.push(ttl);
+  fields.push({ layer: "ip", name: "TTL", bitStart: ttlPos * 8, bitLen: 8, value: ttl, hexValue: String(ttl) });
+  const protoPos = bytes.length;
+  bytes.push(proto);
+  fields.push({ layer: "ip", name: "Protocol", bitStart: protoPos * 8, bitLen: 8, value: proto, hexValue: String(proto) });
+
+  // Header checksum – placeholder
+  const csumPos = bytes.length;
+  bytes.push(0, 0);
+  fields.push({ layer: "ip", name: "Header Checksum", bitStart: csumPos * 8, bitLen: 16, value: 0, hexValue: "0x0000" });
+
+  // Source / Dest IP
+  const srcPos = bytes.length;
+  bytes.push(...srcIp);
+  fields.push({ layer: "ip", name: "Source IP",      bitStart: srcPos * 8, bitLen: 32, value: srcIp, hexValue: srcIp.join(".") });
+  const dstPos = bytes.length;
+  bytes.push(...dstIp);
+  fields.push({ layer: "ip", name: "Destination IP", bitStart: dstPos * 8, bitLen: 32, value: dstIp, hexValue: dstIp.join(".") });
+
+  // Options
+  if (optBytes.length) {
+    const optPos = bytes.length;
+    bytes.push(...optBytes);
+    fields.push({ layer: "ip", name: "Options", bitStart: optPos * 8, bitLen: optBytes.length * 8, value: optBytes, hexValue: optBytes.map(hex2).join(" ") });
+  }
+  markLayerEnd("ip");
+
+  // ---------- L4 ----------
+  const l4Type = document.querySelector('input[name="l4"]:checked').value;
+
+  if (l4Type === "tcp") {
+    markLayerStart("tcp");
+    const sp = (+$("tcpSrc").value) & 0xffff;
+    const dp = (+$("tcpDst").value) & 0xffff;
+    const sq = parseHex32($("tcpSeq").value);
+    const ak = parseHex32($("tcpAck").value);
+    const doff = (+$("tcpDoff").value) & 0xf;
+    const flg = (+$("tcpFlags").value) & 0x1ff;
+    const win = (+$("tcpWin").value) & 0xffff;
+    const urg = (+$("tcpUrg").value) & 0xffff;
+
+    const spP = bytes.length;
+    bytes.push((sp >> 8) & 0xff, sp & 0xff);
+    fields.push({ layer: "tcp", name: "TCP Src Port", bitStart: spP * 8, bitLen: 16, value: sp, hexValue: String(sp) });
+
+    const dpP = bytes.length;
+    bytes.push((dp >> 8) & 0xff, dp & 0xff);
+    fields.push({ layer: "tcp", name: "TCP Dst Port", bitStart: dpP * 8, bitLen: 16, value: dp, hexValue: String(dp) });
+
+    const sqP = bytes.length;
+    bytes.push((sq >>> 24) & 0xff, (sq >>> 16) & 0xff, (sq >>> 8) & 0xff, sq & 0xff);
+    fields.push({ layer: "tcp", name: "Sequence", bitStart: sqP * 8, bitLen: 32, value: sq, hexValue: "0x" + hex8(sq) });
+
+    const akP = bytes.length;
+    bytes.push((ak >>> 24) & 0xff, (ak >>> 16) & 0xff, (ak >>> 8) & 0xff, ak & 0xff);
+    fields.push({ layer: "tcp", name: "Acknowledgement", bitStart: akP * 8, bitLen: 32, value: ak, hexValue: "0x" + hex8(ak) });
+
+    const dfP = bytes.length;
+    // 4 bits data-offset | 3 bits reserved | 9 bits flags
+    const word = ((doff & 0xf) << 12) | (flg & 0x1ff);
+    bytes.push((word >> 8) & 0xff, word & 0xff);
+    fields.push({ layer: "tcp", name: "Data Offset", bitStart: dfP * 8, bitLen: 4, value: doff, hexValue: String(doff) });
+    fields.push({ layer: "tcp", name: "Reserved",    bitStart: dfP * 8 + 4, bitLen: 3, value: 0, hexValue: "0" });
+    fields.push({ layer: "tcp", name: "Flags",       bitStart: dfP * 8 + 7, bitLen: 9, value: flg, hexValue: "0b" + flg.toString(2).padStart(9, "0") });
+
+    const wnP = bytes.length;
+    bytes.push((win >> 8) & 0xff, win & 0xff);
+    fields.push({ layer: "tcp", name: "Window", bitStart: wnP * 8, bitLen: 16, value: win, hexValue: String(win) });
+
+    const csP = bytes.length;
+    bytes.push(0, 0); // checksum placeholder
+    fields.push({ layer: "tcp", name: "Checksum", bitStart: csP * 8, bitLen: 16, value: 0, hexValue: "0x0000" });
+
+    const urP = bytes.length;
+    bytes.push((urg >> 8) & 0xff, urg & 0xff);
+    fields.push({ layer: "tcp", name: "Urgent", bitStart: urP * 8, bitLen: 16, value: urg, hexValue: String(urg) });
+
+    markLayerEnd("tcp");
+  } else if (l4Type === "udp") {
+    markLayerStart("udp");
+    const sp = (+$("udpSrc").value) & 0xffff;
+    const dp = (+$("udpDst").value) & 0xffff;
+
+    const spP = bytes.length;
+    bytes.push((sp >> 8) & 0xff, sp & 0xff);
+    fields.push({ layer: "udp", name: "UDP Src Port", bitStart: spP * 8, bitLen: 16, value: sp, hexValue: String(sp) });
+
+    const dpP = bytes.length;
+    bytes.push((dp >> 8) & 0xff, dp & 0xff);
+    fields.push({ layer: "udp", name: "UDP Dst Port", bitStart: dpP * 8, bitLen: 16, value: dp, hexValue: String(dp) });
+
+    const lnP = bytes.length;
+    bytes.push(0, 0); // length placeholder, filled later
+    fields.push({ layer: "udp", name: "UDP Length", bitStart: lnP * 8, bitLen: 16, value: 0, hexValue: "0x0000" });
+
+    const csP = bytes.length;
+    bytes.push(0, 0);
+    fields.push({ layer: "udp", name: "UDP Checksum", bitStart: csP * 8, bitLen: 16, value: 0, hexValue: "0x0000" });
+
+    markLayerEnd("udp");
+  }
+
+  // ---------- Payload ----------
+  const payloadBytes = parseHexBytes($("payload").value);
+  if (payloadBytes.length) {
+    markLayerStart("payload");
+    const plP = bytes.length;
+    bytes.push(...payloadBytes);
+    fields.push({ layer: "payload", name: "Payload", bitStart: plP * 8, bitLen: payloadBytes.length * 8, value: payloadBytes, hexValue: payloadBytes.map(hex2).join(" ") });
+    markLayerEnd("payload");
+  }
+
+  // ---------- Fixups: Total Length, IP checksum, UDP length ----------
+  const ipTotalLen = bytes.length - ipStartByte;
+  bytes[totalLenPos]     = (ipTotalLen >> 8) & 0xff;
+  bytes[totalLenPos + 1] = ipTotalLen & 0xff;
+  const tlField = fields.find((f) => f.name === "Total Length");
+  tlField.value = ipTotalLen;
+  tlField.hexValue = ipTotalLen + " (0x" + hex4(ipTotalLen) + ")";
+
+  // Compute IP header checksum
+  const ipHdrBytes = bytes.slice(ipStartByte, ipStartByte + ipHdrLen);
+  const csum = ipChecksum(ipHdrBytes);
+  bytes[csumPos]     = (csum >> 8) & 0xff;
+  bytes[csumPos + 1] = csum & 0xff;
+  const csField = fields.find((f) => f.name === "Header Checksum");
+  csField.value = csum;
+  csField.hexValue = "0x" + hex4(csum);
+
+  // UDP length
+  if (l4Type === "udp") {
+    const udpStart = layers.udp.byteStart;
+    const udpLen = bytes.length - udpStart; // includes payload
+    bytes[udpStart + 4] = (udpLen >> 8) & 0xff;
+    bytes[udpStart + 5] = udpLen & 0xff;
+    const f = fields.find((x) => x.name === "UDP Length");
+    f.value = udpLen;
+    f.hexValue = udpLen + " (0x" + hex4(udpLen) + ")";
+  }
+
+  return { bytes, fields, layers, l4Type, ipStartByte, ipHdrLen };
+}
+
+// ============================================================================
+//  Hex view
+// ============================================================================
+let CURRENT = null;       // {bytes, fields, layers, ...}
+let SEL = new Set();      // selected absolute bit indices (MSB-first per byte)
+let ANCHOR = null;        // last clicked bit index (for shift-extend)
+let SEL_FIELD_IDX = -1;   // index in CURRENT.fields, or -1
+let SHOW_BITS = false;
+
+function selBits() { return Array.from(SEL).sort((a, b) => a - b); }
+function selEmpty() { return SEL.size === 0; }
+function selMin() { let m = Infinity; for (const b of SEL) if (b < m) m = b; return m; }
+function selMax() { let m = -Infinity; for (const b of SEL) if (b > m) m = b; return m; }
+
+function applyClick(bits, ev) {
+  // bits: sorted array of bit indices this click targets (a single bit, a byte, or a field's bits)
+  const lo = bits[0], hi = bits[bits.length - 1];
+  if (ev.shiftKey && ANCHOR !== null) {
+    const a = Math.min(ANCHOR, lo), b = Math.max(ANCHOR, hi);
+    if (!(ev.metaKey || ev.ctrlKey)) SEL.clear();
+    for (let i = a; i <= b; i++) SEL.add(i);
+  } else if (ev.metaKey || ev.ctrlKey) {
+    let allSet = true;
+    for (const i of bits) if (!SEL.has(i)) { allSet = false; break; }
+    if (allSet) for (const i of bits) SEL.delete(i);
+    else        for (const i of bits) SEL.add(i);
+    ANCHOR = lo;
+  } else {
+    SEL.clear();
+    for (const i of bits) SEL.add(i);
+    ANCHOR = lo;
+  }
+}
+
+function layerOfByte(byteIdx) {
+  const L = CURRENT.layers;
+  // ordered tightest match
+  for (const k of ["ethernet","vlan0","vlan1","ip","tcp","udp","payload"]) {
+    if (!L[k]) continue;
+    if (byteIdx >= L[k].byteStart && byteIdx < L[k].byteStart + L[k].byteLen) {
+      if (k.startsWith("vlan")) return "vlan";
+      return k;
+    }
+  }
+  return "";
+}
+
+function renderHex() {
+  const host = $("hex");
+  host.innerHTML = "";
+  const bytes = CURRENT.bytes;
+
+  // Per-byte selection counts (0..8). 8 = fully selected, 1..7 = partial.
+  const byteSelCount = new Array(bytes.length).fill(0);
+  for (const b of SEL) {
+    const bi = b >> 3;
+    if (bi < bytes.length) byteSelCount[bi]++;
+  }
+
+  for (let row = 0; row < bytes.length; row += 16) {
+    const div = document.createElement("div");
+    div.className = "hex-row";
+    const off = document.createElement("span");
+    off.className = "offset";
+    off.textContent = row.toString(16).padStart(4, "0");
+    div.appendChild(off);
+
+    for (let i = 0; i < 16; i++) {
+      const idx = row + i;
+      if (idx >= bytes.length) {
+        const sp = document.createElement("span");
+        sp.className = "byte";
+        sp.innerHTML = "&nbsp;&nbsp;";
+        div.appendChild(sp);
+        continue;
+      }
+      const sp = document.createElement("span");
+      const layer = layerOfByte(idx);
+      const full = byteSelCount[idx] === 8;
+      const part = byteSelCount[idx] > 0 && byteSelCount[idx] < 8;
+      sp.className = "byte" + (layer ? " " + layer : "") + (full ? " sel" : "") + (part ? " part" : "");
+      sp.textContent = hex2(bytes[idx]);
+      sp.dataset.idx = idx;
+      sp.title = "byte " + idx + " (0x" + idx.toString(16) + ")" + (part ? " · partial selection" : "");
+      sp.addEventListener("click", (e) => onByteClick(idx, e));
+      div.appendChild(sp);
+      if (i === 7) {
+        const gap = document.createElement("span");
+        gap.textContent = " ";
+        div.appendChild(gap);
+      }
+    }
+
+    // ASCII column
+    const ascii = document.createElement("span");
+    ascii.className = "ascii";
+    for (let i = 0; i < 16; i++) {
+      const idx = row + i;
+      const a = document.createElement("span");
+      a.className = "a" + (byteSelCount[idx] === 8 ? " sel" : "");
+      if (idx >= bytes.length) { a.innerHTML = "&nbsp;"; }
+      else {
+        const c = bytes[idx];
+        a.textContent = (c >= 0x20 && c < 0x7f) ? String.fromCharCode(c) : ".";
+      }
+      ascii.appendChild(a);
+    }
+    div.appendChild(ascii);
+    host.appendChild(div);
+
+    // Bit-level row (optional)
+    if (SHOW_BITS) {
+      const br = document.createElement("div");
+      br.className = "bitrow";
+      for (let i = 0; i < 16; i++) {
+        const idx = row + i;
+        if (idx >= bytes.length) {
+          // pad with 8 invisible cells worth of space
+          const sp = document.createElement("span");
+          sp.className = "bitcell";
+          sp.innerHTML = "&nbsp;";
+          br.appendChild(sp);
+          continue;
+        }
+        const v = bytes[idx];
+        // 8 bit cells, MSB first
+        for (let b = 0; b < 8; b++) {
+          const bit = idx * 8 + b;
+          const cell = document.createElement("span");
+          const on = (v >> (7 - b)) & 1;
+          cell.className = "bitcell" + (SEL.has(bit) ? " sel" : "");
+          cell.textContent = String(on);
+          cell.title = "bit " + bit + " · byte " + idx + " bit " + (7 - b) + " (MSB=7)";
+          cell.addEventListener("click", (e) => onBitClick(bit, e));
+          br.appendChild(cell);
+          if (b === 3) {
+            const gap = document.createElement("span");
+            gap.className = "bitnib";
+            br.appendChild(gap);
+          }
+        }
+        // gap between bytes
+        const bg = document.createElement("span");
+        bg.className = (i === 7) ? "bithalfgap" : "bytgap";
+        br.appendChild(bg);
+      }
+      host.appendChild(br);
+    }
+  }
+}
+
+function onByteClick(idx, ev) {
+  const bits = [];
+  for (let i = 0; i < 8; i++) bits.push(idx * 8 + i);
+  applyClick(bits, ev);
+  SEL_FIELD_IDX = -1;
+  renderAll();
+}
+
+function onBitClick(bit, ev) {
+  applyClick([bit], ev);
+  SEL_FIELD_IDX = -1;
+  renderAll();
+}
+
+// ============================================================================
+//  Field tree
+// ============================================================================
+function renderTree() {
+  const host = $("tree");
+  host.innerHTML = "";
+
+  // Group fields by layer (preserving insertion order)
+  const groups = [];
+  const groupMap = new Map();
+  for (const f of CURRENT.fields) {
+    const key = f.layer;
+    if (!groupMap.has(key)) {
+      const g = { layer: key, label: layerLabel(key), fields: [] };
+      groupMap.set(key, g);
+      groups.push(g);
+    }
+    groupMap.get(key).fields.push(f);
+  }
+
+  for (const g of groups) {
+    const det = document.createElement("details");
+    det.open = true;
+    det.className = "group-" + (g.layer.startsWith("vlan") ? "vlan" : g.layer);
+    const sum = document.createElement("summary");
+    sum.textContent = g.label + "  (" + g.fields.length + " fields)";
+    det.appendChild(sum);
+
+    for (const f of g.fields) {
+      const idx = CURRENT.fields.indexOf(f);
+      const a = document.createElement("span");
+      a.className = "field" + (SEL_FIELD_IDX === idx ? " sel" : "");
+      a.innerHTML = "&nbsp;&nbsp;" + escapeHtml(f.name) +
+        '<span class="v">' + escapeHtml(String(f.hexValue)) + "</span>" +
+        '<span class="meta">[' + f.bitLen + ' bit' + (f.bitLen !== 1 ? "s" : "") + ' @ +' + f.bitStart + ']</span>';
+      a.addEventListener("click", (e) => selectField(idx, e));
+      det.appendChild(a);
+    }
+    host.appendChild(det);
+  }
+}
+
+function layerLabel(layer) {
+  switch (layer) {
+    case "ethernet": return "Ethernet";
+    case "vlan0":    return "VLAN (outer)";
+    case "vlan1":    return "VLAN (inner)";
+    case "ip":       return "IPv4";
+    case "tcp":      return "TCP";
+    case "udp":      return "UDP";
+    case "payload":  return "Payload";
+    default:         return layer;
+  }
+}
+
+function selectField(idx, ev) {
+  const f = CURRENT.fields[idx];
+  const bits = [];
+  for (let i = 0; i < f.bitLen; i++) bits.push(f.bitStart + i);
+  applyClick(bits, ev || {});
+  // Only show field as "selected" in tree when this click resulted in exactly that field
+  if (ev && (ev.shiftKey || ev.metaKey || ev.ctrlKey)) SEL_FIELD_IDX = -1;
+  else SEL_FIELD_IDX = idx;
+  renderAll();
+}
+
+function escapeHtml(s) {
+  return String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
+}
+
+// ============================================================================
+//  UDF generator
+// ============================================================================
+//
+// Given a selection (bitStart, bitLen) over the whole packet, compute UDF rule(s).
+// We pick a "reference layer" – the offset is measured in bytes from the start
+// of that layer's header. Then we lay 32-bit windows over the selection and
+// produce one rule per window, with mask = 1 for "ignore" bits.
+
+function rulePrefix(layer) {
+  switch (layer) {
+    case "ethernet":
+    case "vlan":     return "permit mac any any any";
+    case "ip":
+    case "tcp":
+    case "udp":
+    case "payload":  return "permit ip any any";
+    default:         return "permit ip any any";
+  }
+}
+
+function pickReferenceLayer(selBitStart) {
+  const choice = $("refLayer").value;
+  if (choice !== "auto") return choice;
+  const byte = Math.floor(selBitStart / 8);
+  const L = CURRENT.layers;
+  // Prefer the deepest layer that contains the byte
+  for (const k of ["payload","udp","tcp","ip","vlan1","vlan0","ethernet"]) {
+    if (!L[k]) continue;
+    if (byte >= L[k].byteStart && byte < L[k].byteStart + L[k].byteLen) {
+      if (k.startsWith("vlan")) return "ethernet";
+      return k;
+    }
+  }
+  return "ip";
+}
+
+function layerByteStart(name) {
+  const L = CURRENT.layers;
+  if (name === "vlan") {
+    if (L.vlan0) return L.vlan0.byteStart;
+    if (L.vlan1) return L.vlan1.byteStart;
+  }
+  return L[name] ? L[name].byteStart : 0;
+}
+
+function generateUDF() {
+  const out = $("udf");
+  const meta = $("selSummary");
+  const warn = $("udfWarn");
+  warn.textContent = "";
+
+  if (selEmpty()) {
+    out.textContent = "(select a field, byte, or bit to generate the rule)";
+    meta.innerHTML = "<b>nothing</b> – click a field, byte, or (in bit-level view) a bit";
+    return;
+  }
+
+  const bytes = CURRENT.bytes;
+  const selectedBits = selBits();
+  const sMin = selectedBits[0];
+  const sMax = selectedBits[selectedBits.length - 1];
+
+  // Pick reference layer based on the FIRST selected bit so the offset is non-negative.
+  const layer = pickReferenceLayer(sMin);
+  const layerByteOffset = layerByteStart(layer);
+  const layerBitOffset  = layerByteOffset * 8;
+
+  if (sMin < layerBitOffset) {
+    warn.textContent = "Some selected bits fall before the chosen reference layer – switch to an earlier reference layer.";
+  }
+
+  // Group selected bits by 4-byte word index within the layer header.
+  const wordsMap = new Map();   // wordOffset (within layer) -> Set<absBit>
+  for (const b of selectedBits) {
+    const rel = b - layerBitOffset;
+    if (rel < 0) continue;
+    const w = Math.floor(rel / 32);
+    if (!wordsMap.has(w)) wordsMap.set(w, []);
+    wordsMap.get(w).push(b);
+  }
+
+  const prefix = rulePrefix(layer);
+  const hdrKw  = $("hdrKeyword").value || "header start";
+
+  const wordOffsets = Array.from(wordsMap.keys()).sort((a, b) => a - b);
+  const rules = [];
+  for (const wOffset of wordOffsets) {
+    const absByte = layerByteOffset + wOffset * 4;
+    let pattern = 0n;
+    let mask    = 0xffffffffn;
+
+    for (const absBit of wordsMap.get(wOffset)) {
+      const byteIdx = absBit >> 3;
+      const bInByte = absBit & 7;                    // 0 = MSB
+      const i       = byteIdx - absByte;             // 0..3 within window
+      if (i < 0 || i > 3) continue;
+      const winBit  = (3 - i) * 8 + (7 - bInByte);
+      const byteVal = bytes[byteIdx] || 0;
+      const bitVal  = (byteVal >> (7 - bInByte)) & 1;
+      if (bitVal) pattern |= (1n << BigInt(winBit));
+      mask &= ~(1n << BigInt(winBit));
+    }
+    mask &= 0xffffffffn;
+
+    rules.push(`${prefix} payload ${hdrKw} offset ${wOffset} pattern 0x${pattern.toString(16).padStart(8,"0")} mask 0x${mask.toString(16).padStart(8,"0")}`);
+  }
+
+  if (rules.length > 1) {
+    warn.textContent = `Selection covers ${rules.length} × 32-bit word${rules.length===1?"":"s"} – ${rules.length} rules generated (all must match).`;
+  }
+  out.textContent = rules.length ? rules.join("\n") : "(no rule – selection sits outside the reference layer)";
+
+  // selection summary
+  const f = (SEL_FIELD_IDX >= 0) ? CURRENT.fields[SEL_FIELD_IDX] : null;
+  const where = layerLabel(layer.startsWith("vlan") ? "ethernet" : layer);
+  const blocks = countContiguousBlocks(selectedBits);
+  const head = f
+    ? `<b>${escapeHtml(f.name)}</b> (${f.bitLen} bit${f.bitLen!==1?"s":""}) `
+    : `<b>${SEL.size} bit${SEL.size!==1?"s":""}</b> in ${blocks} block${blocks!==1?"s":""} `;
+  meta.innerHTML = head +
+    `· reference: <b>${where}</b> · ${wordOffsets.length} word${wordOffsets.length!==1?"s":""}: ${wordOffsets.map(w => "offset " + w).join(", ")}` +
+    (f ? ` · value: <span class="mono">${escapeHtml(String(f.hexValue))}</span>` : "");
+}
+
+function countContiguousBlocks(sortedBits) {
+  if (!sortedBits.length) return 0;
+  let n = 1;
+  for (let i = 1; i < sortedBits.length; i++) if (sortedBits[i] !== sortedBits[i - 1] + 1) n++;
+  return n;
+}
+
+// ============================================================================
+//  Render
+// ============================================================================
+function renderAll() {
+  renderHex();
+  renderTree();
+  generateUDF();
+}
+
+function rebuild() {
+  CURRENT = buildPacket();
+  // Drop any selected bits that fall outside the new packet length
+  const last = CURRENT.bytes.length * 8;
+  for (const b of SEL) if (b >= last) SEL.delete(b);
+  if (ANCHOR !== null && ANCHOR >= last) ANCHOR = null;
+  if (SEL_FIELD_IDX >= 0 && SEL_FIELD_IDX >= CURRENT.fields.length) SEL_FIELD_IDX = -1;
+  renderAll();
+}
+
+// ============================================================================
+//  Wire UI
+// ============================================================================
+function wire() {
+  // Auto-toggle VLAN field visibility
+  $("vlan1En").addEventListener("change", () => {
+    $("vlan1Fields").style.display = $("vlan1En").checked ? "" : "none";
+  });
+  $("vlan2En").addEventListener("change", () => {
+    $("vlan2Fields").style.display = $("vlan2En").checked ? "" : "none";
+  });
+  // L4 radio
+  for (const r of document.querySelectorAll('input[name="l4"]')) {
+    r.addEventListener("change", () => {
+      const v = document.querySelector('input[name="l4"]:checked').value;
+      $("l4TcpFields").style.display = (v === "tcp") ? "" : "none";
+      $("l4UdpFields").style.display = (v === "udp") ? "" : "none";
+    });
+  }
+  // Custom protocol field
+  $("ipProto").addEventListener("change", () => {
+    $("ipProtoCustom").style.display = ($("ipProto").value === "custom") ? "" : "none";
+  });
+
+  // Rebuild on any change
+  document.querySelectorAll(".sidebar input, .sidebar select").forEach((el) => {
+    el.addEventListener("change", rebuild);
+    if (el.tagName === "INPUT" && (el.type === "text" || el.type === "number")) {
+      el.addEventListener("input", () => { /* lazy */ });
+    }
+  });
+  $("btnRedraw").addEventListener("click", rebuild);
+  $("btnClear").addEventListener("click", () => { SEL.clear(); ANCHOR = null; SEL_FIELD_IDX = -1; renderAll(); });
+  $("showBits").addEventListener("change", () => { SHOW_BITS = $("showBits").checked; renderAll(); });
+  $("refLayer").addEventListener("change", generateUDF);
+  $("hdrKeyword").addEventListener("input", generateUDF);
+  $("btnCopy").addEventListener("click", async () => {
+    try {
+      await navigator.clipboard.writeText($("udf").textContent);
+      $("btnCopy").textContent = "Copied!";
+      setTimeout(() => { $("btnCopy").textContent = "Copy"; }, 1200);
+    } catch (e) {
+      $("udfWarn").textContent = "Clipboard not available – select the text manually.";
+    }
+  });
+}
+
+wire();
+rebuild();
+</script>
+</body>
+</html>
