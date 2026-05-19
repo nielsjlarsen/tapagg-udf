@@ -1937,17 +1937,42 @@ function wire() {
   $("mplsCount").addEventListener("change", () => { renderMplsStack(); rebuild(); });
   $("mplsCount").addEventListener("input",  () => { renderMplsStack(); rebuild(); });
 
-  // L4 radio
+  // L4 radio: toggle TCP/UDP visibility AND sync the IPv4 Protocol dropdown.
+  // (Both fire rebuild() via the generic .sidebar listener, so the Field Tree
+  // refreshes automatically.)
   for (const r of document.querySelectorAll('input[name="l4"]')) {
     r.addEventListener("change", () => {
       const v = document.querySelector('input[name="l4"]:checked').value;
       $("l4TcpFields").style.display = (v === "tcp") ? "" : "none";
       $("l4UdpFields").style.display = (v === "udp") ? "" : "none";
+      // Mirror into IPv4 Protocol: TCP→6, UDP→17. Leave Protocol alone when
+      // L4=None, so the user can keep a custom/ICMP/GRE value.
+      if (v === "tcp" || v === "udp") {
+        const target = (v === "tcp") ? "6" : "17";
+        if ($("ipProto").value !== target) {
+          $("ipProto").value = target;
+          $("ipProtoCustom").style.display = "none";
+        }
+      }
     });
   }
-  // Custom protocol field
+  // IPv4 Protocol → mirror back into the L4 radio: 6→TCP, 17→UDP, anything
+  // else → None (so the hidden TCP/UDP fields aren't built into the packet).
   $("ipProto").addEventListener("change", () => {
     $("ipProtoCustom").style.display = ($("ipProto").value === "custom") ? "" : "none";
+    const v = $("ipProto").value;
+    let target = "none";
+    if (v === "6")  target = "tcp";
+    else if (v === "17") target = "udp";
+    const cur = (document.querySelector('input[name="l4"]:checked') || { value: "none" }).value;
+    if (cur !== target) {
+      const radio = document.querySelector('input[name="l4"][value="' + target + '"]');
+      if (radio) {
+        radio.checked = true;
+        $("l4TcpFields").style.display = (target === "tcp") ? "" : "none";
+        $("l4UdpFields").style.display = (target === "udp") ? "" : "none";
+      }
+    }
   });
 
   // ERSPAN
