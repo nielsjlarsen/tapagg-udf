@@ -20,10 +20,14 @@
     --sel-strong: #094771;
     --hl-eth: #3a2f1f;
     --hl-vlan: #1f3a2f;
+    --hl-mpls: #3a3315;
     --hl-ip: #1f2a3a;
     --hl-tcp: #2f1f3a;
     --hl-udp: #3a1f2f;
+    --hl-gre: #1f3a3a;
+    --hl-erspan: #3a1f1f;
     --hl-pl: #2a2a1f;
+    --hl-inner: #2a3320;
   }
   html, body {
     height: 100%;
@@ -166,14 +170,18 @@
   .byte + .byte { margin-left: 2px; }
   .byte:hover { outline: 1px solid var(--accent); }
   .byte.sel { background: var(--sel); color: white; }
-  .byte.eth { background: var(--hl-eth); }
+  .byte.eth, .byte.ethernet { background: var(--hl-eth); }
   .byte.vlan { background: var(--hl-vlan); }
+  .byte.mpls { background: var(--hl-mpls); }
   .byte.ip  { background: var(--hl-ip); }
   .byte.tcp { background: var(--hl-tcp); }
   .byte.udp { background: var(--hl-udp); }
-  .byte.pl  { background: var(--hl-pl); }
-  .byte.sel.eth, .byte.sel.vlan, .byte.sel.ip, .byte.sel.tcp, .byte.sel.udp, .byte.sel.pl {
-    background: var(--sel);
+  .byte.gre { background: var(--hl-gre); }
+  .byte.erspan { background: var(--hl-erspan); }
+  .byte.pl, .byte.payload  { background: var(--hl-pl); }
+  .byte.inner { background: var(--hl-inner); }
+  .byte.sel {
+    background: var(--sel) !important;
   }
   .ascii .a {
     display: inline-block;
@@ -305,6 +313,15 @@
     padding: 4px 0 0 0;
   }
   .tcp-flags label.inline { margin: 2px 0; font-size: 11.5px; }
+  .muted-pill {
+    display: inline-block;
+    padding: 0 5px;
+    border-radius: 7px;
+    background: var(--panel2);
+    color: var(--muted);
+    font-size: 10px;
+    margin-left: 2px;
+  }
   .hint { color: var(--muted); font-size: 11.5px; margin-top: 4px; }
   .err  { color: var(--red); font-size: 12px; }
   .warn { color: var(--yellow); font-size: 12px; }
@@ -354,6 +371,17 @@
     </fieldset>
 
     <fieldset>
+      <legend>MPLS (between L2 and L3)</legend>
+      <label class="inline"><input type="checkbox" id="mplsEn"/> Enable MPLS (sets ethertype to <span class="mono">0x8847</span>)</label>
+      <div id="mplsFields" style="display:none">
+        <label>Number of labels</label>
+        <input type="number" id="mplsCount" value="1" min="1" max="6"/>
+        <div id="mplsStack" style="margin-top:6px"></div>
+        <div class="hint">Bottom-of-Stack (S) bit auto-set on the last label.</div>
+      </div>
+    </fieldset>
+
+    <fieldset>
       <legend>Layer 3 – IPv4</legend>
       <div class="row">
         <div><label>Version</label><input type="number" id="ipVer" value="4" min="0" max="15" /></div>
@@ -377,6 +405,7 @@
             <option value="6">6 (TCP)</option>
             <option value="17">17 (UDP)</option>
             <option value="1">1 (ICMP)</option>
+            <option value="47">47 (GRE)</option>
             <option value="custom">custom…</option>
           </select>
           <input class="mono" id="ipProtoCustom" value="47" style="display:none;margin-top:4px" />
@@ -439,7 +468,169 @@
       <legend>Payload</legend>
       <label>Bytes (hex)</label>
       <input class="mono" id="payload" value="de ad be ef ca fe ba be" />
-      <div class="hint">Spaces optional. Example: <span class="mono">deadbeef</span></div>
+      <div class="hint">Spaces optional. Example: <span class="mono">deadbeef</span>. <span id="payloadNoteErspan" style="display:none;color:var(--yellow)">Disabled while ERSPAN is on – the inner frame carries the captured bytes.</span></div>
+    </fieldset>
+
+    <fieldset>
+      <legend>ERSPAN (over GRE)</legend>
+      <label class="inline"><input type="radio" name="erspan" value="none" checked/> None</label>
+      <label class="inline"><input type="radio" name="erspan" value="2"/> Type II</label>
+      <label class="inline"><input type="radio" name="erspan" value="3"/> Type III</label>
+      <div id="erspanFields" style="display:none">
+        <div class="hint">Enabling ERSPAN forces IPv4 <span class="mono">Protocol=47</span> (GRE), hides the L4 / Payload sections, and exposes the inner captured frame below.</div>
+
+        <details class="optionsGroup" open>
+          <summary>GRE header</summary>
+          <label>Sequence Number</label>
+          <input class="mono" id="greSeq" value="0x00000001"/>
+          <div class="hint">Flags=<span class="mono">0x1000</span> (S=1), Ver=0. Protocol Type auto: <span class="mono">0x88BE</span> for Type II, <span class="mono">0x22EB</span> for Type III.</div>
+        </details>
+
+        <details class="optionsGroup" open>
+          <summary>ERSPAN common</summary>
+          <div class="row">
+            <div><label>VLAN</label><input type="number" id="erspanVlan" value="0" min="0" max="4095"/></div>
+            <div><label>COS</label><input type="number" id="erspanCos" value="0" min="0" max="7"/></div>
+          </div>
+          <div class="row">
+            <div><label>Session ID</label><input type="number" id="erspanSession" value="1" min="0" max="1023"/></div>
+            <div><label>T (truncated)</label>
+              <select id="erspanT"><option value="0" selected>0 not truncated</option><option value="1">1 truncated</option></select>
+            </div>
+          </div>
+        </details>
+
+        <details class="optionsGroup" id="erspan2Fields" open>
+          <summary>Type II only</summary>
+          <div class="row">
+            <div><label>En (encap type)</label>
+              <select id="erspan2En">
+                <option value="0">0 ORIGINAL</option>
+                <option value="1">1 ISL</option>
+                <option value="2" selected>2 802.1Q</option>
+                <option value="3">3 VLAN preserved</option>
+              </select>
+            </div>
+            <div><label>Index (20 bits)</label><input type="number" id="erspan2Index" value="0" min="0" max="1048575"/></div>
+          </div>
+        </details>
+
+        <details class="optionsGroup" id="erspan3Fields" style="display:none" open>
+          <summary>Type III only</summary>
+          <div class="row">
+            <div><label>BSO</label>
+              <select id="erspan3Bso">
+                <option value="0" selected>00 Good</option>
+                <option value="1">01 Short</option>
+                <option value="2">10 Oversized</option>
+                <option value="3">11 Bad</option>
+              </select>
+            </div>
+            <div><label>Timestamp</label><input class="mono" id="erspan3Ts" value="0x00000000"/></div>
+          </div>
+          <div class="row">
+            <div><label>SGT</label><input type="number" id="erspan3Sgt" value="0" min="0" max="65535"/></div>
+            <div><label>P (protocol present)</label>
+              <select id="erspan3P"><option value="0">0 not present</option><option value="1" selected>1 present</option></select>
+            </div>
+          </div>
+          <div class="row">
+            <div><label>FT (frame type)</label>
+              <select id="erspan3Ft">
+                <option value="0" selected>0 Ethernet</option>
+                <option value="2">2 IP</option>
+              </select>
+            </div>
+            <div><label>HW ID (6 bits)</label><input type="number" id="erspan3Hw" value="0" min="0" max="63"/></div>
+          </div>
+          <div class="row">
+            <div><label>D (direction)</label>
+              <select id="erspan3D"><option value="0" selected>0 ingress</option><option value="1">1 egress</option></select>
+            </div>
+            <div><label>Gra (granularity)</label>
+              <select id="erspan3Gra">
+                <option value="0" selected>00 100µs</option>
+                <option value="1">01 100ns</option>
+                <option value="2">10 IEEE 1588</option>
+                <option value="3">11 user</option>
+              </select>
+            </div>
+          </div>
+          <label class="inline"><input type="checkbox" id="erspan3O"/> O – include optional 8-byte platform sub-header</label>
+          <div id="erspan3SubHdrFields" style="display:none">
+            <div class="row">
+              <div><label>Platf ID (6 bits)</label><input type="number" id="erspan3PfId" value="0" min="0" max="63"/></div>
+              <div><label>Info (hex, 58 bits)</label><input class="mono" id="erspan3PfInfo" value="0x000000000000000"/></div>
+            </div>
+            <div class="hint">Info is packed into the low 58 bits of the 8-byte sub-header. Anything above 58 bits is truncated.</div>
+          </div>
+        </details>
+      </div>
+    </fieldset>
+
+    <fieldset id="innerFrameFs" style="display:none">
+      <legend>Inner frame (captured by ERSPAN)</legend>
+      <div class="hint">This is the mirrored frame embedded after the ERSPAN header.</div>
+
+      <details class="optionsGroup" open>
+        <summary>Inner Ethernet</summary>
+        <label>Destination MAC</label>
+        <input class="mono" id="inEthDst" value="ff:ff:ff:ff:ff:ff" />
+        <label>Source MAC</label>
+        <input class="mono" id="inEthSrc" value="00:1c:73:aa:bb:cc" />
+        <label class="inline"><input type="checkbox" id="inVlanEn"/> Inner 802.1Q VLAN</label>
+        <div id="inVlanFields" style="display:none">
+          <div class="row">
+            <div><label>TPID</label><input class="mono" id="inVlanTpid" value="0x8100"/></div>
+            <div><label>PCP</label><input type="number" id="inVlanPcp" value="0" min="0" max="7"/></div>
+            <div><label>VID</label><input type="number" id="inVlanVid" value="100" min="0" max="4095"/></div>
+          </div>
+        </div>
+      </details>
+
+      <details class="optionsGroup" open>
+        <summary>Inner IPv4</summary>
+        <div class="row">
+          <div><label>DSCP</label><input type="number" id="inIpDscp" value="0" min="0" max="63"/></div>
+          <div><label>TTL</label><input type="number" id="inIpTtl" value="64" min="0" max="255"/></div>
+        </div>
+        <label>Protocol</label>
+        <select id="inIpProto">
+          <option value="6" selected>6 (TCP)</option>
+          <option value="17">17 (UDP)</option>
+          <option value="1">1 (ICMP)</option>
+          <option value="custom">custom…</option>
+        </select>
+        <input class="mono" id="inIpProtoCustom" value="47" style="display:none;margin-top:4px"/>
+        <label>Source IP</label>
+        <input class="mono" id="inIpSrc" value="192.168.1.10"/>
+        <label>Destination IP</label>
+        <input class="mono" id="inIpDst" value="192.168.1.20"/>
+      </details>
+
+      <details class="optionsGroup" open>
+        <summary>Inner L4</summary>
+        <label class="inline"><input type="radio" name="inL4" value="none"/> None</label>
+        <label class="inline"><input type="radio" name="inL4" value="tcp" checked/> TCP</label>
+        <label class="inline"><input type="radio" name="inL4" value="udp"/> UDP</label>
+        <div id="inL4Tcp">
+          <div class="row">
+            <div><label>Src port</label><input type="number" id="inTcpSrc" value="12345" min="0" max="65535"/></div>
+            <div><label>Dst port</label><input type="number" id="inTcpDst" value="443"   min="0" max="65535"/></div>
+          </div>
+        </div>
+        <div id="inL4Udp" style="display:none">
+          <div class="row">
+            <div><label>Src port</label><input type="number" id="inUdpSrc" value="12345" min="0" max="65535"/></div>
+            <div><label>Dst port</label><input type="number" id="inUdpDst" value="53"    min="0" max="65535"/></div>
+          </div>
+        </div>
+      </details>
+
+      <details class="optionsGroup">
+        <summary>Inner payload (hex)</summary>
+        <input class="mono" id="inPayload" value="48 65 6c 6c 6f" />
+      </details>
     </fieldset>
 
     <div class="toolbar">
@@ -459,10 +650,14 @@
     <div class="legend-bar">
       <span><span class="sw" style="background:var(--hl-eth)"></span>Ethernet</span>
       <span><span class="sw" style="background:var(--hl-vlan)"></span>VLAN</span>
+      <span><span class="sw" style="background:var(--hl-mpls)"></span>MPLS</span>
       <span><span class="sw" style="background:var(--hl-ip)"></span>IPv4</span>
       <span><span class="sw" style="background:var(--hl-tcp)"></span>TCP</span>
       <span><span class="sw" style="background:var(--hl-udp)"></span>UDP</span>
+      <span><span class="sw" style="background:var(--hl-gre)"></span>GRE</span>
+      <span><span class="sw" style="background:var(--hl-erspan)"></span>ERSPAN</span>
       <span><span class="sw" style="background:var(--hl-pl)"></span>Payload</span>
+      <span><span class="sw" style="background:var(--hl-inner)"></span>Inner frame</span>
     </div>
     <div id="hex" class="hex-wrap"></div>
 
@@ -483,19 +678,30 @@
       <label class="inline">Reference layer
         <select id="refLayer">
           <option value="auto">auto (from selection)</option>
-          <option value="ip">L3 (IPv4) — uses "permit ip any any"</option>
-          <option value="ethernet">L2 (Ethernet) — uses "permit mac any any any"</option>
-          <option value="tcp">L4 (TCP)</option>
-          <option value="udp">L4 (UDP)</option>
-          <option value="payload">L7 (payload after L4)</option>
+          <optgroup label="Outer">
+            <option value="ethernet">L2 Ethernet — uses "permit mac any any any"</option>
+            <option value="mpls">MPLS label stack</option>
+            <option value="ip">L3 IPv4 — uses "permit ip any any"</option>
+            <option value="tcp">L4 TCP</option>
+            <option value="udp">L4 UDP</option>
+            <option value="gre">GRE (ERSPAN carrier)</option>
+            <option value="erspan">ERSPAN header</option>
+            <option value="payload">L7 payload</option>
+          </optgroup>
+          <optgroup label="Inner (ERSPAN captured frame)">
+            <option value="in-ethernet">Inner Ethernet</option>
+            <option value="in-ip">Inner IPv4</option>
+            <option value="in-tcp">Inner TCP</option>
+            <option value="in-udp">Inner UDP</option>
+            <option value="in-payload">Inner payload</option>
+          </optgroup>
         </select>
       </label>
-      <label class="inline">Header keyword
-        <select id="hdrKeyword" class="mono" style="width:160px">
-          <option value="header end" selected>header end (default)</option>
-          <option value="header start">header start</option>
-        </select>
-      </label>
+      <span class="inline" style="display:inline-flex;gap:10px;align-items:center">
+        <span>Header keyword:</span>
+        <label class="inline"><input type="radio" name="hdrKw" value="header end" checked/> <span class="mono">header end</span> <span class="muted-pill">default</span></label>
+        <label class="inline"><input type="radio" name="hdrKw" value="header start"/> <span class="mono">header start</span></label>
+      </span>
       <button id="btnCopy">Copy</button>
     </div>
     <div id="udf" class="udf-out">(select a field to generate the rule)</div>
@@ -573,32 +779,27 @@ function buildPacket() {
   const layers = {}; // layer name -> { bitStart, byteStart, byteLen }
   const bytes = [];
 
-  // helper: add a sequence of bytes for a field
+  // --- tiny builder helpers ----------------------------------------------
   function pushField(layer, name, byteArr, opts = {}) {
-    const bitStart = bytes.length * 8 + (opts.bitInByte || 0);
     if (opts.bitLen) {
-      // sub-byte field: do NOT push bytes (the parent byte already pushed)
-      fields.push({
-        layer, name,
-        bitStart: opts.absBitStart, bitLen: opts.bitLen,
-        value: opts.value, hexValue: opts.hexValue,
-      });
+      fields.push({ layer, name, bitStart: opts.absBitStart, bitLen: opts.bitLen, value: opts.value, hexValue: opts.hexValue });
       return;
     }
-    fields.push({
-      layer, name,
-      bitStart: bytes.length * 8, bitLen: byteArr.length * 8,
-      value: opts.value, hexValue: opts.hexValue || ("0x" + byteArr.map(hex2).join("")),
-    });
+    fields.push({ layer, name, bitStart: bytes.length * 8, bitLen: byteArr.length * 8, value: opts.value, hexValue: opts.hexValue || ("0x" + byteArr.map(hex2).join("")) });
     bytes.push(...byteArr);
   }
+  function pushU8(layer, name, v, hexValue)  { pushField(layer, name, [v & 0xff], { hexValue: hexValue || String(v) }); }
+  function pushU16(layer, name, v, hexValue) { pushField(layer, name, [(v>>8)&0xff, v&0xff], { hexValue: hexValue || ("0x" + hex4(v)) }); }
+  function pushU32(layer, name, v, hexValue) { pushField(layer, name, [(v>>>24)&0xff,(v>>>16)&0xff,(v>>>8)&0xff,v&0xff], { hexValue: hexValue || ("0x" + hex8(v)) }); }
+  function recordBitField(layer, name, absBitStart, bitLen, value, hexValue) {
+    fields.push({ layer, name, bitStart: absBitStart, bitLen, value, hexValue });
+  }
+  function markLayerStart(name) { layers[name] = { bitStart: bytes.length * 8, byteStart: bytes.length }; }
+  function markLayerEnd(name)   { layers[name].byteLen = bytes.length - layers[name].byteStart; }
 
-  function markLayerStart(name) {
-    layers[name] = { bitStart: bytes.length * 8, byteStart: bytes.length };
-  }
-  function markLayerEnd(name) {
-    layers[name].byteLen = bytes.length - layers[name].byteStart;
-  }
+  // --- read top-level mode ------------------------------------------------
+  const erspanType  = document.querySelector('input[name="erspan"]:checked').value; // "none"|"2"|"3"
+  const mplsEnabled = $("mplsEn").checked;
 
   // ---------- Ethernet ----------
   markLayerStart("ethernet");
@@ -647,9 +848,32 @@ function buildPacket() {
     markLayerEnd("vlan" + i);
   }
 
-  // EtherType (always 0x0800 for IPv4 in this builder)
-  pushField("ethernet", "EtherType", [0x08, 0x00], { hexValue: "0x0800" });
+  // EtherType – 0x8847 if MPLS, else 0x0800 (IPv4)
+  const outerEthertype = mplsEnabled ? 0x8847 : 0x0800;
+  pushField("ethernet", "EtherType", [(outerEthertype>>8)&0xff, outerEthertype&0xff], { hexValue: "0x" + hex4(outerEthertype) + (mplsEnabled ? " (MPLS)" : " (IPv4)") });
   markLayerEnd("ethernet");
+
+  // ---------- MPLS label stack (if enabled) ----------
+  if (mplsEnabled) {
+    const n = Math.max(1, Math.min(6, parseInt($("mplsCount").value || "1")));
+    for (let i = 0; i < n; i++) {
+      const lbl = parseInt(($("mplsLabel" + i)?.value) || "0") & 0xfffff;
+      const tc  = parseInt(($("mplsTc" + i)?.value)    || "0") & 0x7;
+      const ttl = parseInt(($("mplsTtl" + i)?.value)   || "64") & 0xff;
+      const isBoS = (i === n - 1) ? 1 : 0;
+      const layerName = "mpls" + i;
+      markLayerStart(layerName);
+      const start = bytes.length;
+      // 32-bit big-endian: Label(20) | TC(3) | S(1) | TTL(8)
+      const word = ((lbl & 0xfffff) << 12) | ((tc & 7) << 9) | (isBoS << 8) | (ttl & 0xff);
+      bytes.push((word>>>24)&0xff, (word>>>16)&0xff, (word>>>8)&0xff, word&0xff);
+      recordBitField(layerName, `MPLS[${i}] Label`,    start*8,      20, lbl, String(lbl));
+      recordBitField(layerName, `MPLS[${i}] TC (EXP)`, start*8 + 20, 3,  tc,  String(tc));
+      recordBitField(layerName, `MPLS[${i}] S (BoS)`,  start*8 + 23, 1,  isBoS, isBoS ? "1 (bottom)" : "0");
+      recordBitField(layerName, `MPLS[${i}] TTL`,      start*8 + 24, 8,  ttl, String(ttl));
+      markLayerEnd(layerName);
+    }
+  }
 
   // ---------- IPv4 ----------
   markLayerStart("ip");
@@ -670,8 +894,13 @@ function buildPacket() {
   const frag  = (+$("ipFrag").value) & 0x1fff;
   const ttl   = (+$("ipTtl").value) & 0xff;
   let proto;
-  if ($("ipProto").value === "custom") proto = parseHexByte($("ipProtoCustom").value);
-  else proto = (+$("ipProto").value) & 0xff;
+  if (erspanType !== "none") {
+    proto = 47; // GRE
+  } else if ($("ipProto").value === "custom") {
+    proto = parseHexByte($("ipProtoCustom").value);
+  } else {
+    proto = (+$("ipProto").value) & 0xff;
+  }
 
   const srcIp = parseIp($("ipSrc").value);
   const dstIp = parseIp($("ipDst").value);
@@ -737,10 +966,109 @@ function buildPacket() {
   }
   markLayerEnd("ip");
 
-  // ---------- L4 ----------
-  const l4Type = document.querySelector('input[name="l4"]:checked').value;
+  // ---------- L4 OR GRE+ERSPAN+inner-frame ----------
+  let l4Type = "none";
+  let innerIpInfo = null; // for inner-frame fixups when ERSPAN is on
 
-  if (l4Type === "tcp") {
+  if (erspanType !== "none") {
+    // ===== GRE header =====
+    markLayerStart("gre");
+    const greStart = bytes.length;
+    // Flags/Ver: S=1 (sequence present), Ver=0  => 0x1000
+    bytes.push(0x10, 0x00);
+    recordBitField("gre","GRE C",       greStart*8,    1, 0, "0");
+    recordBitField("gre","GRE R",       greStart*8+1,  1, 0, "0");
+    recordBitField("gre","GRE K",       greStart*8+2,  1, 0, "0");
+    recordBitField("gre","GRE S",       greStart*8+3,  1, 1, "1 (sequence present)");
+    recordBitField("gre","GRE s",       greStart*8+4,  1, 0, "0");
+    recordBitField("gre","GRE Recur",   greStart*8+5,  3, 0, "0");
+    recordBitField("gre","GRE Flags",   greStart*8+8,  5, 0, "0");
+    recordBitField("gre","GRE Version", greStart*8+13, 3, 0, "0");
+    const greProto = (erspanType === "2") ? 0x88BE : 0x22EB;
+    pushU16("gre","GRE Protocol Type", greProto, "0x" + hex4(greProto) + (erspanType === "2" ? " (ERSPAN II)" : " (ERSPAN III)"));
+    pushU32("gre","GRE Sequence Number", parseHex32($("greSeq").value));
+    markLayerEnd("gre");
+
+    // ===== ERSPAN header =====
+    markLayerStart("erspan");
+    const eStart = bytes.length;
+    const vlan = (+$("erspanVlan").value) & 0xfff;
+    const cos  = (+$("erspanCos").value) & 7;
+    const tt   = (+$("erspanT").value) & 1;
+    const sid  = (+$("erspanSession").value) & 0x3ff;
+
+    if (erspanType === "2") {
+      const ver = 1;
+      const en  = (+$("erspan2En").value) & 3;
+      const idx = (+$("erspan2Index").value) & 0xfffff;
+
+      // 4 bytes: Ver(4) VLAN(12) | COS(3) En(2) T(1) SessionID(10)
+      const w0 = (ver<<28) | (vlan<<16) | (cos<<13) | (en<<11) | (tt<<10) | sid;
+      bytes.push((w0>>>24)&0xff, (w0>>>16)&0xff, (w0>>>8)&0xff, w0&0xff);
+      recordBitField("erspan","Ver",          eStart*8,    4,  ver,  String(ver));
+      recordBitField("erspan","VLAN",         eStart*8+4,  12, vlan, String(vlan));
+      recordBitField("erspan","COS",          eStart*8+16, 3,  cos,  String(cos));
+      recordBitField("erspan","En",           eStart*8+19, 2,  en,   String(en));
+      recordBitField("erspan","T",            eStart*8+21, 1,  tt,   String(tt));
+      recordBitField("erspan","Session ID",   eStart*8+22, 10, sid,  String(sid));
+
+      // 4 bytes: Reserved(12) Index(20)
+      const w1 = idx & 0xfffff;
+      bytes.push((w1>>>24)&0xff, (w1>>>16)&0xff, (w1>>>8)&0xff, w1&0xff);
+      recordBitField("erspan","Reserved", (eStart+4)*8,    12, 0,   "0");
+      recordBitField("erspan","Index",    (eStart+4)*8+12, 20, idx, String(idx));
+    } else {
+      const ver = 2;
+      const bso = (+$("erspan3Bso").value) & 3;
+
+      const w0 = (ver<<28) | (vlan<<16) | (cos<<13) | (bso<<11) | (tt<<10) | sid;
+      bytes.push((w0>>>24)&0xff, (w0>>>16)&0xff, (w0>>>8)&0xff, w0&0xff);
+      recordBitField("erspan","Ver",          eStart*8,    4,  ver,  String(ver));
+      recordBitField("erspan","VLAN",         eStart*8+4,  12, vlan, String(vlan));
+      recordBitField("erspan","COS",          eStart*8+16, 3,  cos,  String(cos));
+      recordBitField("erspan","BSO",          eStart*8+19, 2,  bso,  String(bso));
+      recordBitField("erspan","T",            eStart*8+21, 1,  tt,   String(tt));
+      recordBitField("erspan","Session ID",   eStart*8+22, 10, sid,  String(sid));
+
+      pushU32("erspan","Timestamp", parseHex32($("erspan3Ts").value));
+
+      const sgt = (+$("erspan3Sgt").value) & 0xffff;
+      const p   = (+$("erspan3P").value)   & 1;
+      const ft  = (+$("erspan3Ft").value)  & 0x1f;
+      const hw  = (+$("erspan3Hw").value)  & 0x3f;
+      const d   = (+$("erspan3D").value)   & 1;
+      const gra = (+$("erspan3Gra").value) & 3;
+      const o   = $("erspan3O").checked ? 1 : 0;
+
+      const w2pos = bytes.length;
+      const w2 = (sgt<<16) | (p<<15) | (ft<<10) | (hw<<4) | (d<<3) | (gra<<1) | o;
+      bytes.push((w2>>>24)&0xff, (w2>>>16)&0xff, (w2>>>8)&0xff, w2&0xff);
+      recordBitField("erspan","SGT",   w2pos*8,    16, sgt, String(sgt));
+      recordBitField("erspan","P",     w2pos*8+16, 1,  p,   String(p));
+      recordBitField("erspan","FT",    w2pos*8+17, 5,  ft,  String(ft));
+      recordBitField("erspan","HW ID", w2pos*8+22, 6,  hw,  String(hw));
+      recordBitField("erspan","D",     w2pos*8+28, 1,  d,   String(d));
+      recordBitField("erspan","Gra",   w2pos*8+29, 2,  gra, String(gra));
+      recordBitField("erspan","O",     w2pos*8+31, 1,  o,   o ? "1 (sub-header follows)" : "0");
+
+      if (o) {
+        // Optional 8-byte sub-header: Platf ID(6) | Info(58)
+        const pfId = (+$("erspan3PfId").value) & 0x3f;
+        let info = 0n;
+        try { info = BigInt($("erspan3PfInfo").value || "0"); } catch (e) { info = 0n; }
+        info = info & ((1n<<58n) - 1n);
+        const combined = (BigInt(pfId) << 58n) | info;
+        const subPos = bytes.length;
+        for (let bi = 7; bi >= 0; bi--) bytes.push(Number((combined >> BigInt(bi*8)) & 0xffn));
+        recordBitField("erspan","Platf ID", subPos*8,    6,  pfId, String(pfId));
+        recordBitField("erspan","Info",     subPos*8+6,  58, info.toString(), "0x" + info.toString(16));
+      }
+    }
+    markLayerEnd("erspan");
+
+    // ===== Inner captured frame =====
+    innerIpInfo = buildInnerFrame();
+  } else if ((l4Type = document.querySelector('input[name="l4"]:checked').value) === "tcp") {
     markLayerStart("tcp");
     const sp = (+$("tcpSrc").value) & 0xffff;
     const dp = (+$("tcpDst").value) & 0xffff;
@@ -848,14 +1176,16 @@ function buildPacket() {
     markLayerEnd("udp");
   }
 
-  // ---------- Payload ----------
-  const payloadBytes = parseHexBytes($("payload").value);
-  if (payloadBytes.length) {
-    markLayerStart("payload");
-    const plP = bytes.length;
-    bytes.push(...payloadBytes);
-    fields.push({ layer: "payload", name: "Payload", bitStart: plP * 8, bitLen: payloadBytes.length * 8, value: payloadBytes, hexValue: payloadBytes.map(hex2).join(" ") });
-    markLayerEnd("payload");
+  // ---------- Payload (outer; skipped when ERSPAN carries an inner frame) ----------
+  if (erspanType === "none") {
+    const payloadBytes = parseHexBytes($("payload").value);
+    if (payloadBytes.length) {
+      markLayerStart("payload");
+      const plP = bytes.length;
+      bytes.push(...payloadBytes);
+      fields.push({ layer: "payload", name: "Payload", bitStart: plP * 8, bitLen: payloadBytes.length * 8, value: payloadBytes, hexValue: payloadBytes.map(hex2).join(" ") });
+      markLayerEnd("payload");
+    }
   }
 
   // ---------- Fixups: Total Length, IP checksum, UDP length ----------
@@ -886,7 +1216,139 @@ function buildPacket() {
     f.hexValue = udpLen + " (0x" + hex4(udpLen) + ")";
   }
 
-  return { bytes, fields, layers, l4Type, ipStartByte, ipHdrLen };
+  // ---------- Inner-frame fixups (when ERSPAN carries one) ----------
+  if (innerIpInfo) {
+    const inTotal = bytes.length - innerIpInfo.ipStartByte;
+    bytes[innerIpInfo.totalLenPos]     = (inTotal>>8) & 0xff;
+    bytes[innerIpInfo.totalLenPos + 1] = inTotal & 0xff;
+    const tlF = fields.find((f) => f.name === "Inner Total Length");
+    if (tlF) { tlF.value = inTotal; tlF.hexValue = inTotal + " (0x" + hex4(inTotal) + ")"; }
+
+    const inHdr = bytes.slice(innerIpInfo.ipStartByte, innerIpInfo.ipStartByte + 20);
+    const inCsum = ipChecksum(inHdr);
+    bytes[innerIpInfo.csumPos]     = (inCsum>>8) & 0xff;
+    bytes[innerIpInfo.csumPos + 1] = inCsum & 0xff;
+    const csF = fields.find((f) => f.name === "Inner Header Checksum");
+    if (csF) { csF.value = inCsum; csF.hexValue = "0x" + hex4(inCsum); }
+
+    if (innerIpInfo.udpStart !== null) {
+      const ul = bytes.length - innerIpInfo.udpStart;
+      bytes[innerIpInfo.udpStart + 4] = (ul>>8) & 0xff;
+      bytes[innerIpInfo.udpStart + 5] = ul & 0xff;
+      const uF = fields.find((f) => f.name === "Inner UDP Length");
+      if (uF) { uF.value = ul; uF.hexValue = ul + " (0x" + hex4(ul) + ")"; }
+    }
+  }
+
+  return { bytes, fields, layers, l4Type, ipStartByte, ipHdrLen, erspanType, mplsEnabled };
+
+  // ====================================================================
+  //   Inner frame builder (only invoked when ERSPAN is on)
+  // ====================================================================
+  function buildInnerFrame() {
+    // Inner Ethernet
+    markLayerStart("in-ethernet");
+    const dst = parseMac($("inEthDst").value);
+    const src = parseMac($("inEthSrc").value);
+    pushField("in-ethernet", "Inner Dst MAC", dst, { hexValue: dst.map(hex2).join(":") });
+    pushField("in-ethernet", "Inner Src MAC", src, { hexValue: src.map(hex2).join(":") });
+
+    if ($("inVlanEn").checked) {
+      markLayerStart("in-vlan");
+      const tpid = parseHex16($("inVlanTpid").value);
+      const pcp  = (+$("inVlanPcp").value) & 7;
+      const vid  = (+$("inVlanVid").value) & 0xfff;
+      pushU16("in-vlan", "Inner VLAN TPID", tpid);
+      const tciPos = bytes.length;
+      bytes.push((pcp<<5) | ((vid>>8) & 0x0f), vid & 0xff);
+      recordBitField("in-vlan", "Inner VLAN PCP", tciPos*8,   3,  pcp, String(pcp));
+      recordBitField("in-vlan", "Inner VLAN DEI", tciPos*8+3, 1,  0,   "0");
+      recordBitField("in-vlan", "Inner VLAN VID", tciPos*8+4, 12, vid, String(vid));
+      markLayerEnd("in-vlan");
+    }
+    pushU16("in-ethernet", "Inner EtherType", 0x0800, "0x0800 (IPv4)");
+    markLayerEnd("in-ethernet");
+
+    // Inner IPv4 (fixed 20-byte header)
+    markLayerStart("in-ip");
+    const inDscp = (+$("inIpDscp").value) & 0x3f;
+    const inTtl  = (+$("inIpTtl").value)  & 0xff;
+    let inProto;
+    if ($("inIpProto").value === "custom") inProto = parseHexByte($("inIpProtoCustom").value);
+    else inProto = (+$("inIpProto").value) & 0xff;
+    const inSrcIp = parseIp($("inIpSrc").value);
+    const inDstIp = parseIp($("inIpDst").value);
+
+    const inIpStart = bytes.length;
+    bytes.push(0x45);
+    recordBitField("in-ip", "Inner Version", inIpStart*8,   4, 4, "4");
+    recordBitField("in-ip", "Inner IHL",     inIpStart*8+4, 4, 5, "5 (20 bytes)");
+    bytes.push((inDscp<<2));
+    recordBitField("in-ip", "Inner DSCP", (inIpStart+1)*8,   6, inDscp, String(inDscp));
+    recordBitField("in-ip", "Inner ECN",  (inIpStart+1)*8+6, 2, 0,      "0");
+
+    const inTlPos = bytes.length;
+    bytes.push(0, 0);
+    recordBitField("in-ip", "Inner Total Length", inTlPos*8, 16, 0, "0x0000");
+
+    pushU16("in-ip", "Inner Identification", 0);
+
+    const inFfPos = bytes.length;
+    bytes.push(0x40, 0); // flags=DF, frag=0
+    recordBitField("in-ip", "Inner Flags",           inFfPos*8,   3,  2, "0b010 (DF)");
+    recordBitField("in-ip", "Inner Fragment Offset", inFfPos*8+3, 13, 0, "0");
+
+    pushU8("in-ip", "Inner TTL",      inTtl);
+    pushU8("in-ip", "Inner Protocol", inProto);
+
+    const inCsumPos = bytes.length;
+    bytes.push(0, 0);
+    recordBitField("in-ip", "Inner Header Checksum", inCsumPos*8, 16, 0, "0x0000");
+
+    pushField("in-ip", "Inner Source IP",      inSrcIp, { hexValue: inSrcIp.join(".") });
+    pushField("in-ip", "Inner Destination IP", inDstIp, { hexValue: inDstIp.join(".") });
+    markLayerEnd("in-ip");
+
+    // Inner L4
+    const inL4 = (document.querySelector('input[name="inL4"]:checked') || { value: "none" }).value;
+    let udpStart = null;
+    if (inL4 === "tcp") {
+      markLayerStart("in-tcp");
+      pushU16("in-tcp", "Inner TCP Src Port", (+$("inTcpSrc").value) & 0xffff);
+      pushU16("in-tcp", "Inner TCP Dst Port", (+$("inTcpDst").value) & 0xffff);
+      pushU32("in-tcp", "Inner TCP Sequence", 0);
+      pushU32("in-tcp", "Inner TCP Ack",      0);
+      const dfP = bytes.length;
+      bytes.push(0x50, 0); // dataOff=5, flags=0
+      recordBitField("in-tcp", "Inner TCP Data Offset",  dfP*8,    4, 5, "5");
+      recordBitField("in-tcp", "Inner TCP Reserved",     dfP*8+4,  3, 0, "0");
+      recordBitField("in-tcp", "Inner TCP Flags (all 9)", dfP*8+7,  9, 0, "0x000");
+      pushU16("in-tcp", "Inner TCP Window",   65535);
+      pushU16("in-tcp", "Inner TCP Checksum", 0);
+      pushU16("in-tcp", "Inner TCP Urgent",   0);
+      markLayerEnd("in-tcp");
+    } else if (inL4 === "udp") {
+      markLayerStart("in-udp");
+      pushU16("in-udp", "Inner UDP Src Port", (+$("inUdpSrc").value) & 0xffff);
+      pushU16("in-udp", "Inner UDP Dst Port", (+$("inUdpDst").value) & 0xffff);
+      pushU16("in-udp", "Inner UDP Length",   0); // placeholder
+      pushU16("in-udp", "Inner UDP Checksum", 0);
+      udpStart = layers["in-udp"].byteStart;
+      markLayerEnd("in-udp");
+    }
+
+    // Inner payload
+    const inPl = parseHexBytes($("inPayload").value);
+    if (inPl.length) {
+      markLayerStart("in-payload");
+      const p = bytes.length;
+      bytes.push(...inPl);
+      fields.push({ layer: "in-payload", name: "Inner Payload", bitStart: p*8, bitLen: inPl.length*8, value: inPl, hexValue: inPl.map(hex2).join(" ") });
+      markLayerEnd("in-payload");
+    }
+
+    return { ipStartByte: inIpStart, totalLenPos: inTlPos, csumPos: inCsumPos, udpStart };
+  }
 }
 
 // ============================================================================
@@ -925,11 +1387,21 @@ function applyClick(bits, ev) {
 
 function layerOfByte(byteIdx) {
   const L = CURRENT.layers;
-  // ordered tightest match
-  for (const k of ["ethernet","vlan0","vlan1","ip","tcp","udp","payload"]) {
+  // Iterate innermost → outermost. First match wins so a nested layer
+  // (e.g. vlan0 inside ethernet) takes precedence over its container.
+  const order = [
+    "in-payload","in-udp","in-tcp","in-ip","in-vlan","in-ethernet",
+    "erspan","gre",
+    "payload","udp","tcp","ip",
+    "mpls5","mpls4","mpls3","mpls2","mpls1","mpls0",
+    "vlan1","vlan0","ethernet",
+  ];
+  for (const k of order) {
     if (!L[k]) continue;
     if (byteIdx >= L[k].byteStart && byteIdx < L[k].byteStart + L[k].byteLen) {
       if (k.startsWith("vlan")) return "vlan";
+      if (k.startsWith("mpls")) return "mpls";
+      if (k.startsWith("in-")) return "inner";
       return k;
     }
   }
@@ -1110,14 +1582,24 @@ function renderTree() {
 
 function layerLabel(layer) {
   switch (layer) {
-    case "ethernet": return "Ethernet";
-    case "vlan0":    return "VLAN (outer)";
-    case "vlan1":    return "VLAN (inner)";
-    case "ip":       return "IPv4";
-    case "tcp":      return "TCP";
-    case "udp":      return "UDP";
-    case "payload":  return "Payload";
-    default:         return layer;
+    case "ethernet":     return "Ethernet";
+    case "vlan0":        return "VLAN (outer)";
+    case "vlan1":        return "VLAN (inner)";
+    case "ip":           return "IPv4";
+    case "tcp":          return "TCP";
+    case "udp":          return "UDP";
+    case "gre":          return "GRE";
+    case "erspan":       return "ERSPAN";
+    case "payload":      return "Payload";
+    case "in-ethernet":  return "Inner Ethernet";
+    case "in-vlan":      return "Inner VLAN";
+    case "in-ip":        return "Inner IPv4";
+    case "in-tcp":       return "Inner TCP";
+    case "in-udp":       return "Inner UDP";
+    case "in-payload":   return "Inner Payload";
+    default:
+      if (layer && layer.startsWith("mpls")) return "MPLS label " + layer.slice(4);
+      return layer;
   }
 }
 
@@ -1146,15 +1628,9 @@ function escapeHtml(s) {
 // produce one rule per window, with mask = 1 for "ignore" bits.
 
 function rulePrefix(layer) {
-  switch (layer) {
-    case "ethernet":
-    case "vlan":     return "permit mac any any any";
-    case "ip":
-    case "tcp":
-    case "udp":
-    case "payload":  return "permit ip any any";
-    default:         return "permit ip any any";
-  }
+  // L2-anchored references → MAC ACL; anything reachable only after IP parses → IP ACL.
+  if (layer === "ethernet" || layer === "vlan" || layer === "mpls") return "permit mac any any any";
+  return "permit ip any any";
 }
 
 function pickReferenceLayer(selBitStart) {
@@ -1162,11 +1638,20 @@ function pickReferenceLayer(selBitStart) {
   if (choice !== "auto") return choice;
   const byte = Math.floor(selBitStart / 8);
   const L = CURRENT.layers;
-  // Prefer the deepest layer that contains the byte
-  for (const k of ["payload","udp","tcp","ip","vlan1","vlan0","ethernet"]) {
+  // Innermost → outermost
+  const order = [
+    "in-payload","in-udp","in-tcp","in-ip","in-vlan","in-ethernet",
+    "erspan","gre",
+    "payload","udp","tcp","ip",
+    "mpls5","mpls4","mpls3","mpls2","mpls1","mpls0",
+    "vlan1","vlan0","ethernet",
+  ];
+  for (const k of order) {
     if (!L[k]) continue;
     if (byte >= L[k].byteStart && byte < L[k].byteStart + L[k].byteLen) {
       if (k.startsWith("vlan")) return "ethernet";
+      if (k.startsWith("mpls")) return "mpls";
+      if (k.startsWith("in-")) return k;        // keep "in-ethernet" etc. as-is
       return k;
     }
   }
@@ -1178,6 +1663,10 @@ function layerByteStart(name) {
   if (name === "vlan") {
     if (L.vlan0) return L.vlan0.byteStart;
     if (L.vlan1) return L.vlan1.byteStart;
+  }
+  if (name === "mpls") {
+    // First MPLS label in the stack
+    for (let i = 0; i < 6; i++) if (L["mpls" + i]) return L["mpls" + i].byteStart;
   }
   return L[name] ? L[name].byteStart : 0;
 }
@@ -1219,7 +1708,7 @@ function generateUDF() {
   }
 
   const prefix = rulePrefix(layer);
-  const hdrKw  = $("hdrKeyword").value || "header end";
+  const hdrKw  = (document.querySelector('input[name="hdrKw"]:checked') || { value: "header end" }).value;
 
   const wordOffsets = Array.from(wordsMap.keys()).sort((a, b) => a - b);
   const rules = [];
@@ -1251,7 +1740,11 @@ function generateUDF() {
 
   // selection summary
   const f = (SEL_FIELD_IDX >= 0) ? CURRENT.fields[SEL_FIELD_IDX] : null;
-  const where = layerLabel(layer.startsWith("vlan") ? "ethernet" : layer);
+  const where = layerLabel(
+    layer === "vlan" ? "ethernet" :
+    layer === "mpls" ? "mpls0" :
+    layer
+  );
   const blocks = countContiguousBlocks(selectedBits);
   const head = f
     ? `<b>${escapeHtml(f.name)}</b> (${f.bitLen} bit${f.bitLen!==1?"s":""}) `
@@ -1290,6 +1783,60 @@ function rebuild() {
 // ============================================================================
 //  Wire UI
 // ============================================================================
+function renderMplsStack() {
+  const host = $("mplsStack");
+  const n = Math.max(1, Math.min(6, parseInt($("mplsCount").value || "1")));
+  // Preserve existing values where possible
+  const cur = [];
+  for (let i = 0; i < 6; i++) {
+    cur.push({
+      label: ($("mplsLabel" + i) || {}).value,
+      tc:    ($("mplsTc"    + i) || {}).value,
+      ttl:   ($("mplsTtl"   + i) || {}).value,
+    });
+  }
+  host.innerHTML = "";
+  for (let i = 0; i < n; i++) {
+    const wrap = document.createElement("fieldset");
+    wrap.style.cssText = "border:1px dashed var(--border);border-radius:3px;padding:4px 8px;margin:6px 0;";
+    const lg = document.createElement("legend");
+    lg.style.cssText = "font-size:11px;color:var(--muted);padding:0 4px;";
+    lg.textContent = "Label " + i + ((i === n - 1) ? "  (BoS, S=1)" : "");
+    wrap.appendChild(lg);
+    wrap.innerHTML += `
+      <div class="row">
+        <div><label>Label</label><input type="number" id="mplsLabel${i}" min="0" max="1048575" value="${cur[i].label ?? (100 + i)}"/></div>
+        <div><label>TC (EXP)</label><input type="number" id="mplsTc${i}" min="0" max="7" value="${cur[i].tc ?? 0}"/></div>
+        <div><label>TTL</label><input type="number" id="mplsTtl${i}" min="0" max="255" value="${cur[i].ttl ?? 64}"/></div>
+      </div>
+    `;
+    host.appendChild(wrap);
+  }
+  // Newly-created inputs need their rebuild listener
+  host.querySelectorAll("input").forEach((el) => {
+    el.addEventListener("change", rebuild);
+  });
+}
+
+function syncErspanVisibility() {
+  const v = (document.querySelector('input[name="erspan"]:checked') || { value: "none" }).value;
+  const on = v !== "none";
+  $("erspanFields").style.display    = on ? "" : "none";
+  $("erspan2Fields").style.display   = (v === "2") ? "" : "none";
+  $("erspan3Fields").style.display   = (v === "3") ? "" : "none";
+  $("innerFrameFs").style.display    = on ? "" : "none";
+
+  // Hide outer L4 + outer Payload when ERSPAN is on (the inner frame replaces them)
+  document.querySelectorAll(".sidebar fieldset").forEach((fs) => {
+    const lg = fs.querySelector("legend");
+    if (!lg) return;
+    if (lg.textContent.startsWith("Layer 4") || lg.textContent.startsWith("Payload")) {
+      fs.style.display = on ? "none" : "";
+    }
+  });
+  $("payloadNoteErspan").style.display = on ? "" : "none";
+}
+
 function wire() {
   // Auto-toggle VLAN field visibility
   $("vlan1En").addEventListener("change", () => {
@@ -1298,6 +1845,16 @@ function wire() {
   $("vlan2En").addEventListener("change", () => {
     $("vlan2Fields").style.display = $("vlan2En").checked ? "" : "none";
   });
+
+  // MPLS
+  $("mplsEn").addEventListener("change", () => {
+    $("mplsFields").style.display = $("mplsEn").checked ? "" : "none";
+    if ($("mplsEn").checked) renderMplsStack();
+    rebuild();
+  });
+  $("mplsCount").addEventListener("change", () => { renderMplsStack(); rebuild(); });
+  $("mplsCount").addEventListener("input",  () => { renderMplsStack(); rebuild(); });
+
   // L4 radio
   for (const r of document.querySelectorAll('input[name="l4"]')) {
     r.addEventListener("change", () => {
@@ -1309,6 +1866,28 @@ function wire() {
   // Custom protocol field
   $("ipProto").addEventListener("change", () => {
     $("ipProtoCustom").style.display = ($("ipProto").value === "custom") ? "" : "none";
+  });
+
+  // ERSPAN
+  for (const r of document.querySelectorAll('input[name="erspan"]')) {
+    r.addEventListener("change", () => { syncErspanVisibility(); rebuild(); });
+  }
+  $("erspan3O").addEventListener("change", () => {
+    $("erspan3SubHdrFields").style.display = $("erspan3O").checked ? "" : "none";
+  });
+  // Inner-frame controls
+  $("inVlanEn").addEventListener("change", () => {
+    $("inVlanFields").style.display = $("inVlanEn").checked ? "" : "none";
+  });
+  for (const r of document.querySelectorAll('input[name="inL4"]')) {
+    r.addEventListener("change", () => {
+      const v = document.querySelector('input[name="inL4"]:checked').value;
+      $("inL4Tcp").style.display = (v === "tcp") ? "" : "none";
+      $("inL4Udp").style.display = (v === "udp") ? "" : "none";
+    });
+  }
+  $("inIpProto").addEventListener("change", () => {
+    $("inIpProtoCustom").style.display = ($("inIpProto").value === "custom") ? "" : "none";
   });
 
   // Rebuild on any change
@@ -1330,7 +1909,9 @@ function wire() {
     renderTree();
   });
   $("refLayer").addEventListener("change", generateUDF);
-  $("hdrKeyword").addEventListener("change", generateUDF);
+  for (const r of document.querySelectorAll('input[name="hdrKw"]')) {
+    r.addEventListener("change", generateUDF);
+  }
   $("btnCopy").addEventListener("click", async () => {
     try {
       await navigator.clipboard.writeText($("udf").textContent);
@@ -1343,6 +1924,9 @@ function wire() {
 }
 
 wire();
+// Initial UI state for ERSPAN/MPLS sub-sections
+syncErspanVisibility();
+if ($("mplsEn").checked) renderMplsStack();
 rebuild();
 </script>
 </body>

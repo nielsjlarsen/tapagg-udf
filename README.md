@@ -17,8 +17,14 @@ No build step, no dependencies, no network.
 
 ## How it works
 
-1. Configure the packet on the left (Ethernet, optional VLAN/QinQ, IPv4, optional
-   TCP/UDP, payload bytes).
+1. Configure the packet on the left:
+   - Ethernet (+ optional 802.1Q / Q-in-Q VLAN tags)
+   - **MPLS** label stack (1–6 labels with Label/TC/TTL; S bit auto-set)
+   - IPv4 (with options; TotalLen/checksum auto-computed)
+   - TCP or UDP, or
+   - **ERSPAN** Type II / Type III (over GRE) — auto-forces IP Protocol=47,
+     hides the L4 / Payload controls, and exposes an inner-frame builder
+     for the captured frame (its own Ethernet/VLAN/IPv4/TCP/UDP/payload).
 2. The hex pane shows the resulting bytes coloured by layer.
 3. Click a field in the tree, click bytes in the hex pane, or enable
    **Bit-level view** to click individual bits. Modifiers:
