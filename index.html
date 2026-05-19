@@ -374,6 +374,10 @@
 
 <div class="grid">
   <aside class="sidebar">
+    <div class="toolbar" style="margin:0 0 10px 0">
+      <button id="btnSidebarExpand"   style="font-size:11px;padding:3px 8px">Expand all</button>
+      <button id="btnSidebarCollapse" style="font-size:11px;padding:3px 8px">Collapse all</button>
+    </div>
     <details class="sidebarSection" id="fsEthernet">
       <summary>Layer 2 – Ethernet</summary>
       <div class="sectionBody">
@@ -688,7 +692,6 @@
     </details>
 
     <div class="toolbar">
-      <button class="primary" id="btnRedraw">Rebuild packet</button>
       <button id="btnClear">Clear selection</button>
       <label class="inline" style="margin-left:auto"><input type="checkbox" id="showBits" /> Bit-level view</label>
     </div>
@@ -1972,8 +1975,13 @@ function wire() {
       el.addEventListener("input", () => { /* lazy */ });
     }
   });
-  $("btnRedraw").addEventListener("click", rebuild);
   $("btnClear").addEventListener("click", () => { SEL.clear(); ANCHOR = null; renderAll(); });
+  $("btnSidebarExpand").addEventListener("click", () => {
+    document.querySelectorAll(".sidebar details.sidebarSection").forEach((d) => { d.open = true; });
+  });
+  $("btnSidebarCollapse").addEventListener("click", () => {
+    document.querySelectorAll(".sidebar details.sidebarSection").forEach((d) => { d.open = false; });
+  });
   $("showBits").addEventListener("change", () => { SHOW_BITS = $("showBits").checked; renderAll(); });
   $("btnTreeExpand").addEventListener("click", () => {
     for (const f of (CURRENT ? CURRENT.fields : [])) OPEN_GROUPS.add(f.layer);
