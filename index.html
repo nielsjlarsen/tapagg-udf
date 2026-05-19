@@ -444,10 +444,10 @@
       <input class="mono" id="ipId" value="0x1234" />
       <div class="row">
         <div>
-          <label>Flags <span id="ipFlagsHex" class="mono" style="color:var(--green);font-weight:normal">0b010 · DF</span></label>
+          <label>Flags <span id="ipFlagsHex" class="mono" style="color:var(--green);font-weight:normal">0b000 · (none)</span></label>
           <div class="tcp-flags">
             <label class="inline"><input type="checkbox" id="ipFlagRES" disabled/> Reserved</label>
-            <label class="inline"><input type="checkbox" id="ipFlagDF" checked/> DF</label>
+            <label class="inline"><input type="checkbox" id="ipFlagDF"/> DF</label>
             <label class="inline"><input type="checkbox" id="ipFlagMF"/> MF</label>
           </div>
         </div>
@@ -558,22 +558,48 @@
     </details>
 
     <details class="sidebarSection" id="fsErspan">
-      <summary>ERSPAN (over GRE)</summary>
+      <summary>GRE / ERSPAN</summary>
       <div class="sectionBody">
       <label class="inline"><input type="radio" name="erspan" value="none" checked/> None</label>
-      <label class="inline"><input type="radio" name="erspan" value="2"/> Type II</label>
-      <label class="inline"><input type="radio" name="erspan" value="3"/> Type III</label>
+      <label class="inline"><input type="radio" name="erspan" value="gre"/> GRE (plain)</label>
+      <label class="inline"><input type="radio" name="erspan" value="2"/> ERSPAN II</label>
+      <label class="inline"><input type="radio" name="erspan" value="3"/> ERSPAN III</label>
       <div id="erspanFields" style="display:none">
-        <div class="hint">Enabling ERSPAN forces IPv4 <span class="mono">Protocol=47</span> (GRE), hides the L4 / Payload sections, and exposes the inner captured frame below.</div>
+        <div class="hint">Selecting GRE or ERSPAN forces IPv4 <span class="mono">Protocol=47</span> (GRE), hides the outer L4 / Payload sections, and exposes the inner frame builder below.</div>
 
-        <details class="optionsGroup" open>
+        <details class="optionsGroup" id="greHdrDetails" open>
           <summary>GRE header</summary>
-          <label>Sequence Number</label>
-          <input class="mono" id="greSeq" value="0x00000001"/>
-          <div class="hint">Flags=<span class="mono">0x1000</span> (S=1), Ver=0. Protocol Type auto: <span class="mono">0x88BE</span> for Type II, <span class="mono">0x22EB</span> for Type III.</div>
+          <div id="greErspanNote" class="hint" style="display:none">For ERSPAN: Flags=<span class="mono">0x1000</span> (S=1), Ver=0. Protocol Type auto: <span class="mono">0x88BE</span> for Type II, <span class="mono">0x22EB</span> for Type III.</div>
+
+          <div id="grePlainCfg" style="display:none">
+            <label>Protocol Type</label>
+            <select id="greProto">
+              <option value="0x0800" selected>0x0800 (IPv4)</option>
+              <option value="0x86dd">0x86DD (IPv6)</option>
+              <option value="0x6558">0x6558 (Transparent Ethernet Bridging)</option>
+              <option value="0x880b">0x880B (PPP)</option>
+              <option value="0x8847">0x8847 (MPLS unicast)</option>
+              <option value="custom">custom…</option>
+            </select>
+            <input class="mono" id="greProtoCustom" value="0x0800" style="display:none;margin-top:4px"/>
+            <div class="tcp-flags" style="margin-top:4px">
+              <label class="inline"><input type="checkbox" id="greFlagC"/> C (checksum present)</label>
+              <label class="inline"><input type="checkbox" id="greFlagK"/> K (key present)</label>
+              <label class="inline"><input type="checkbox" id="greFlagS"/> S (sequence present)</label>
+            </div>
+            <div id="greKeyRow" style="display:none">
+              <label>Key (32 bits)</label>
+              <input class="mono" id="greKey" value="0x00000000"/>
+            </div>
+          </div>
+
+          <div id="greSeqRow">
+            <label>Sequence Number</label>
+            <input class="mono" id="greSeq" value="0x00000001"/>
+          </div>
         </details>
 
-        <details class="optionsGroup" open>
+        <details class="optionsGroup" id="erspanCommonDetails" open>
           <summary>ERSPAN common</summary>
           <div class="row">
             <div><label>VLAN</label><input type="number" id="erspanVlan" value="0" min="0" max="4095"/></div>
@@ -1088,22 +1114,53 @@ function buildPacket() {
     // ===== GRE header =====
     markLayerStart("gre");
     const greStart = bytes.length;
-    // Flags/Ver: S=1 (sequence present), Ver=0  => 0x1000
-    bytes.push(0x10, 0x00);
-    recordBitField("gre","GRE C",       greStart*8,    1, 0, "0");
+
+    // Decide C/K/S + Protocol Type:
+    //  - ERSPAN II/III: fixed flags (S=1, C=K=0) and Protocol Type 0x88BE/0x22EB
+    //  - GRE (plain): user-set flags + Protocol Type
+    let cBit, kBit, sBit, greProto, greProtoNote;
+    if (erspanType === "gre") {
+      cBit = $("greFlagC").checked ? 1 : 0;
+      kBit = $("greFlagK").checked ? 1 : 0;
+      sBit = $("greFlagS").checked ? 1 : 0;
+      const sel = $("greProto").value;
+      greProto = (sel === "custom") ? parseHex16($("greProtoCustom").value) : parseHex16(sel);
+      greProtoNote = "0x" + hex4(greProto);
+    } else {
+      cBit = 0; kBit = 0; sBit = 1;
+      greProto = (erspanType === "2") ? 0x88BE : 0x22EB;
+      greProtoNote = "0x" + hex4(greProto) + (erspanType === "2" ? " (ERSPAN II)" : " (ERSPAN III)");
+    }
+    const flagsVer = (cBit<<15) | (kBit<<13) | (sBit<<12); // R=0, s=0, Recur=0, Flags=0, Ver=0
+    bytes.push((flagsVer>>8)&0xff, flagsVer&0xff);
+    recordBitField("gre","GRE C",       greStart*8,    1, cBit, cBit ? "1" : "0");
     recordBitField("gre","GRE R",       greStart*8+1,  1, 0, "0");
-    recordBitField("gre","GRE K",       greStart*8+2,  1, 0, "0");
-    recordBitField("gre","GRE S",       greStart*8+3,  1, 1, "1 (sequence present)");
+    recordBitField("gre","GRE K",       greStart*8+2,  1, kBit, kBit ? "1" : "0");
+    recordBitField("gre","GRE S",       greStart*8+3,  1, sBit, sBit ? "1" : "0");
     recordBitField("gre","GRE s",       greStart*8+4,  1, 0, "0");
     recordBitField("gre","GRE Recur",   greStart*8+5,  3, 0, "0");
     recordBitField("gre","GRE Flags",   greStart*8+8,  5, 0, "0");
     recordBitField("gre","GRE Version", greStart*8+13, 3, 0, "0");
-    const greProto = (erspanType === "2") ? 0x88BE : 0x22EB;
-    pushU16("gre","GRE Protocol Type", greProto, "0x" + hex4(greProto) + (erspanType === "2" ? " (ERSPAN II)" : " (ERSPAN III)"));
-    pushU32("gre","GRE Sequence Number", parseHex32($("greSeq").value));
+    pushU16("gre","GRE Protocol Type", greProto, greProtoNote);
+
+    // Optional fields (RFC 2784 order): Checksum+Reserved1, Key, Sequence Number
+    if (cBit) {
+      const checksumStart = bytes.length;
+      bytes.push(0, 0); // Checksum – patched in fixups
+      bytes.push(0, 0); // Reserved1 – always 0
+      recordBitField("gre", "GRE Checksum",  checksumStart*8,      16, 0, "0x0000");
+      recordBitField("gre", "GRE Reserved1", (checksumStart+2)*8,  16, 0, "0x0000");
+    }
+    if (kBit) {
+      pushU32("gre", "GRE Key", parseHex32($("greKey").value));
+    }
+    if (sBit) {
+      pushU32("gre", "GRE Sequence Number", parseHex32($("greSeq").value));
+    }
     markLayerEnd("gre");
 
-    // ===== ERSPAN header =====
+    // ===== ERSPAN header (only for ERSPAN II/III, not plain GRE) =====
+    if (erspanType === "2" || erspanType === "3") {
     markLayerStart("erspan");
     const eStart = bytes.length;
     const vlan = (+$("erspanVlan").value) & 0xfff;
@@ -1179,8 +1236,9 @@ function buildPacket() {
       }
     }
     markLayerEnd("erspan");
+    } // end if ERSPAN II/III
 
-    // ===== Inner captured frame =====
+    // ===== Inner frame (used by plain GRE and by ERSPAN) =====
     innerIpInfo = buildInnerFrame();
   } else if ((l4Type = document.querySelector('input[name="l4"]:checked').value) === "tcp") {
     markLayerStart("tcp");
@@ -1355,6 +1413,21 @@ function buildPacket() {
     const f = fields.find((x) => x.name === "UDP Length");
     f.value = udpLen;
     f.hexValue = udpLen + " (0x" + hex4(udpLen) + ")";
+  }
+
+  // GRE checksum (only when C flag is set; covers GRE header + everything after it)
+  if (erspanType === "gre" && $("greFlagC").checked) {
+    const g = layers.gre;
+    if (g) {
+      // C flag was placed first after fixed 4 bytes
+      const csumPos = g.byteStart + 4; // bytes 0..3 are flags+ver + protocol type
+      const greAndAfter = bytes.slice(g.byteStart, bytes.length);
+      const greCsum = ipChecksum(greAndAfter);
+      bytes[csumPos]     = (greCsum >> 8) & 0xff;
+      bytes[csumPos + 1] = greCsum & 0xff;
+      const f = fields.find((x) => x.name === "GRE Checksum");
+      if (f) { f.value = greCsum; f.hexValue = "0x" + hex4(greCsum); }
+    }
   }
 
   // ICMP checksum (over the whole ICMP message – header + payload)
@@ -1992,19 +2065,27 @@ function renderMplsStack() {
 
 function syncErspanVisibility() {
   const v = (document.querySelector('input[name="erspan"]:checked') || { value: "none" }).value;
-  const on = v !== "none";
-  $("erspanFields").style.display    = on ? "" : "none";
-  $("erspan2Fields").style.display   = (v === "2") ? "" : "none";
-  $("erspan3Fields").style.display   = (v === "3") ? "" : "none";
-  $("innerFrameFs").style.display    = on ? "" : "none";
+  const on   = v !== "none";
+  const gre  = v === "gre";
+  const erspan = (v === "2" || v === "3");
+  $("erspanFields").style.display      = on ? "" : "none";
+  $("erspan2Fields").style.display     = (v === "2") ? "" : "none";
+  $("erspan3Fields").style.display     = (v === "3") ? "" : "none";
+  $("erspanCommonDetails").style.display = erspan ? "" : "none";
+  $("greErspanNote").style.display     = erspan ? "" : "none";
+  $("grePlainCfg").style.display       = gre ? "" : "none";
+  // Plain GRE: Sequence only shows when S flag is set.
+  // ERSPAN: Sequence is always present (S=1 hard-wired).
+  const seqOn = erspan || (gre && $("greFlagS").checked);
+  $("greSeqRow").style.display         = seqOn ? "" : "none";
+  $("greKeyRow").style.display         = (gre && $("greFlagK").checked) ? "" : "none";
+  $("innerFrameFs").style.display      = on ? "" : "none";
 
-  // Hide outer L4 + outer Payload when ERSPAN is on (the inner frame replaces them)
+  // Hide outer L4 + outer Payload when a tunnel is on (inner frame replaces them)
   $("fsL4").style.display      = on ? "none" : "";
   $("fsPayload").style.display = on ? "none" : "";
   $("payloadNoteErspan").style.display = on ? "" : "none";
 
-  // When ERSPAN is freshly enabled, expand the ERSPAN + Inner-frame sections
-  // so the user actually sees the controls instead of two collapsed bars.
   if (on) {
     $("fsErspan").open = true;
     $("innerFrameFs").open = true;
@@ -2079,6 +2160,13 @@ function wire() {
   $("erspan3O").addEventListener("change", () => {
     $("erspan3SubHdrFields").style.display = $("erspan3O").checked ? "" : "none";
   });
+  // Plain GRE controls
+  $("greProto").addEventListener("change", () => {
+    $("greProtoCustom").style.display = ($("greProto").value === "custom") ? "" : "none";
+  });
+  for (const id of ["greFlagC", "greFlagK", "greFlagS"]) {
+    $(id).addEventListener("change", () => { syncErspanVisibility(); rebuild(); });
+  }
   // Inner-frame controls
   $("inVlanEn").addEventListener("change", () => {
     $("inVlanFields").style.display = $("inVlanEn").checked ? "" : "none";
