@@ -91,6 +91,40 @@
     font-size: 12px;
     padding: 0 4px;
   }
+
+  /* Collapsible sidebar sections */
+  details.sidebarSection {
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    margin: 0 0 8px 0;
+    background: transparent;
+  }
+  details.sidebarSection > summary {
+    color: var(--accent);
+    font-size: 12px;
+    padding: 6px 10px;
+    cursor: pointer;
+    user-select: none;
+    list-style: none;
+    font-weight: 600;
+    letter-spacing: 0.02em;
+  }
+  details.sidebarSection > summary::-webkit-details-marker { display: none; }
+  details.sidebarSection > summary::before {
+    content: "▸";
+    display: inline-block;
+    width: 1em;
+    color: var(--muted);
+  }
+  details.sidebarSection[open] > summary::before {
+    content: "▾";
+  }
+  details.sidebarSection[open] > summary {
+    border-bottom: 1px solid var(--border);
+  }
+  details.sidebarSection > .sectionBody {
+    padding: 8px 10px 10px 10px;
+  }
   label {
     display: block;
     font-size: 12px;
@@ -340,16 +374,19 @@
 
 <div class="grid">
   <aside class="sidebar">
-    <fieldset>
-      <legend>Layer 2 – Ethernet</legend>
-      <label>Destination MAC</label>
-      <input class="mono" id="ethDst" value="00:1c:73:00:00:01" />
-      <label>Source MAC</label>
-      <input class="mono" id="ethSrc" value="00:1c:73:00:00:02" />
-    </fieldset>
+    <details class="sidebarSection" id="fsEthernet">
+      <summary>Layer 2 – Ethernet</summary>
+      <div class="sectionBody">
+        <label>Destination MAC</label>
+        <input class="mono" id="ethDst" value="00:1c:73:00:00:01" />
+        <label>Source MAC</label>
+        <input class="mono" id="ethSrc" value="00:1c:73:00:00:02" />
+      </div>
+    </details>
 
-    <fieldset>
-      <legend>VLAN tags</legend>
+    <details class="sidebarSection" id="fsVlans">
+      <summary>VLAN tags</summary>
+      <div class="sectionBody">
       <label class="inline"><input type="checkbox" id="vlan1En" /> Outer VLAN (802.1Q)</label>
       <div id="vlan1Fields" style="display:none">
         <div class="row">
@@ -372,21 +409,25 @@
           <div><label>VID</label><input type="number" id="vlan2Vid" min="0" max="4095" value="200" /></div>
         </div>
       </div>
-    </fieldset>
-
-    <fieldset>
-      <legend>MPLS (between L2 and L3)</legend>
-      <label class="inline"><input type="checkbox" id="mplsEn"/> Enable MPLS (sets ethertype to <span class="mono">0x8847</span>)</label>
-      <div id="mplsFields" style="display:none">
-        <label>Number of labels</label>
-        <input type="number" id="mplsCount" value="1" min="1" max="6"/>
-        <div id="mplsStack" style="margin-top:6px"></div>
-        <div class="hint">Bottom-of-Stack (S) bit auto-set on the last label.</div>
       </div>
-    </fieldset>
+    </details>
 
-    <fieldset>
-      <legend>Layer 3 – IPv4</legend>
+    <details class="sidebarSection" id="fsMpls">
+      <summary>MPLS (between L2 and L3)</summary>
+      <div class="sectionBody">
+        <label class="inline"><input type="checkbox" id="mplsEn"/> Enable MPLS (sets ethertype to <span class="mono">0x8847</span>)</label>
+        <div id="mplsFields" style="display:none">
+          <label>Number of labels</label>
+          <input type="number" id="mplsCount" value="1" min="1" max="6"/>
+          <div id="mplsStack" style="margin-top:6px"></div>
+          <div class="hint">Bottom-of-Stack (S) bit auto-set on the last label.</div>
+        </div>
+      </div>
+    </details>
+
+    <details class="sidebarSection" id="fsIp">
+      <summary>Layer 3 – IPv4</summary>
+      <div class="sectionBody">
       <div class="row">
         <div><label>Version</label><input type="number" id="ipVer" value="4" min="0" max="15" /></div>
         <div><label>IHL (32-bit words)</label><input type="number" id="ipIhl" value="5" min="5" max="15" /></div>
@@ -424,10 +465,12 @@
         <input class="mono" id="ipOptions" placeholder="(empty) or e.g. 01 01 04 04 ..." />
         <div class="hint">Length is rounded up to a 4-byte boundary. IHL auto-updates.</div>
       </details>
-    </fieldset>
+      </div>
+    </details>
 
-    <fieldset>
-      <legend>Layer 4</legend>
+    <details class="sidebarSection" id="fsL4">
+      <summary>Layer 4</summary>
+      <div class="sectionBody">
       <label class="inline"><input type="radio" name="l4" id="l4None" value="none"/> None</label>
       <label class="inline"><input type="radio" name="l4" id="l4Tcp"  value="tcp" checked/> TCP</label>
       <label class="inline"><input type="radio" name="l4" id="l4Udp"  value="udp"/> UDP</label>
@@ -441,7 +484,7 @@
         <label>Ack</label><input class="mono" id="tcpAck" value="0x00000000" />
         <div class="row">
           <div><label>Data offset</label><input type="number" id="tcpDoff" value="5" min="5" max="15"/></div>
-          <div><label>Flags</label><span id="tcpFlagsHex" class="mono" style="color:var(--green)">0x002 · SYN</span></div>
+          <div><label>Flags</label><span id="tcpFlagsHex" class="mono" style="color:var(--green)">0x000 · (none)</span></div>
         </div>
         <div class="tcp-flags">
           <label class="inline"><input type="checkbox" class="tcpFlag" data-bit="8" id="tcpFlagNS"/> NS</label>
@@ -451,7 +494,7 @@
           <label class="inline"><input type="checkbox" class="tcpFlag" data-bit="4" id="tcpFlagACK"/> ACK</label>
           <label class="inline"><input type="checkbox" class="tcpFlag" data-bit="3" id="tcpFlagPSH"/> PSH</label>
           <label class="inline"><input type="checkbox" class="tcpFlag" data-bit="2" id="tcpFlagRST"/> RST</label>
-          <label class="inline"><input type="checkbox" class="tcpFlag" data-bit="1" id="tcpFlagSYN" checked/> SYN</label>
+          <label class="inline"><input type="checkbox" class="tcpFlag" data-bit="1" id="tcpFlagSYN"/> SYN</label>
           <label class="inline"><input type="checkbox" class="tcpFlag" data-bit="0" id="tcpFlagFIN"/> FIN</label>
         </div>
         <div class="row">
@@ -466,17 +509,21 @@
           <div><label>Dst port</label><input type="number" id="udpDst" value="53"    min="0" max="65535"/></div>
         </div>
       </div>
-    </fieldset>
+      </div>
+    </details>
 
-    <fieldset>
-      <legend>Payload</legend>
-      <label>Bytes (hex)</label>
-      <input class="mono" id="payload" value="de ad be ef ca fe ba be" />
-      <div class="hint">Spaces optional. Example: <span class="mono">deadbeef</span>. <span id="payloadNoteErspan" style="display:none;color:var(--yellow)">Disabled while ERSPAN is on – the inner frame carries the captured bytes.</span></div>
-    </fieldset>
+    <details class="sidebarSection" id="fsPayload">
+      <summary>Payload</summary>
+      <div class="sectionBody">
+        <label>Bytes (hex)</label>
+        <input class="mono" id="payload" value="de ad be ef ca fe ba be" />
+        <div class="hint">Spaces optional. Example: <span class="mono">deadbeef</span>. <span id="payloadNoteErspan" style="display:none;color:var(--yellow)">Disabled while ERSPAN is on – the inner frame carries the captured bytes.</span></div>
+      </div>
+    </details>
 
-    <fieldset>
-      <legend>ERSPAN (over GRE)</legend>
+    <details class="sidebarSection" id="fsErspan">
+      <summary>ERSPAN (over GRE)</summary>
+      <div class="sectionBody">
       <label class="inline"><input type="radio" name="erspan" value="none" checked/> None</label>
       <label class="inline"><input type="radio" name="erspan" value="2"/> Type II</label>
       <label class="inline"><input type="radio" name="erspan" value="3"/> Type III</label>
@@ -570,10 +617,12 @@
           </div>
         </details>
       </div>
-    </fieldset>
+      </div>
+    </details>
 
-    <fieldset id="innerFrameFs" style="display:none">
-      <legend>Inner frame (captured by ERSPAN)</legend>
+    <details class="sidebarSection" id="innerFrameFs" style="display:none">
+      <summary>Inner frame (captured by ERSPAN)</summary>
+      <div class="sectionBody">
       <div class="hint">This is the mirrored frame embedded after the ERSPAN header.</div>
 
       <details class="optionsGroup" open>
@@ -635,7 +684,8 @@
         <summary>Inner payload (hex)</summary>
         <input class="mono" id="inPayload" value="48 65 6c 6c 6f" />
       </details>
-    </fieldset>
+      </div>
+    </details>
 
     <div class="toolbar">
       <button class="primary" id="btnRedraw">Rebuild packet</button>
@@ -1850,14 +1900,16 @@ function syncErspanVisibility() {
   $("innerFrameFs").style.display    = on ? "" : "none";
 
   // Hide outer L4 + outer Payload when ERSPAN is on (the inner frame replaces them)
-  document.querySelectorAll(".sidebar fieldset").forEach((fs) => {
-    const lg = fs.querySelector("legend");
-    if (!lg) return;
-    if (lg.textContent.startsWith("Layer 4") || lg.textContent.startsWith("Payload")) {
-      fs.style.display = on ? "none" : "";
-    }
-  });
+  $("fsL4").style.display      = on ? "none" : "";
+  $("fsPayload").style.display = on ? "none" : "";
   $("payloadNoteErspan").style.display = on ? "" : "none";
+
+  // When ERSPAN is freshly enabled, expand the ERSPAN + Inner-frame sections
+  // so the user actually sees the controls instead of two collapsed bars.
+  if (on) {
+    $("fsErspan").open = true;
+    $("innerFrameFs").open = true;
+  }
 }
 
 function wire() {
