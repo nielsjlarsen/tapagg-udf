@@ -693,7 +693,6 @@
 
     <div class="toolbar">
       <button id="btnClear">Clear selection</button>
-      <label class="inline" style="margin-left:auto"><input type="checkbox" id="showBits" /> Bit-level view</label>
     </div>
     <div class="hint">
       Click = replace selection · Shift-click = extend to range ·
@@ -703,7 +702,12 @@
   </aside>
 
   <main class="main">
-    <div class="panel-h2">Packet bytes (Wireshark-style)</div>
+    <div class="panel-h2" style="display:flex;align-items:center;gap:12px">
+      <span>Packet bytes (Wireshark-style)</span>
+      <label class="inline" style="margin-left:auto;color:var(--text);text-transform:none;letter-spacing:0;font-size:12px">
+        <input type="checkbox" id="showBits" /> Bit-level view
+      </label>
+    </div>
     <div class="legend-bar">
       <span><span class="sw" style="background:var(--hl-eth)"></span>Ethernet</span>
       <span><span class="sw" style="background:var(--hl-vlan)"></span>VLAN</span>
