@@ -803,29 +803,6 @@
       <span id="selSummary"><b>nothing</b> – click a field or drag-select bytes above</span>
     </div>
     <div class="toolbar">
-      <label class="inline">Reference layer
-        <select id="refLayer">
-          <option value="auto">auto (from selection)</option>
-          <optgroup label="Outer">
-            <option value="ethernet">L2 Ethernet — uses "permit mac any any any"</option>
-            <option value="mpls">MPLS label stack</option>
-            <option value="ip">L3 IPv4 — uses "permit ip any any"</option>
-            <option value="tcp">L4 TCP</option>
-            <option value="udp">L4 UDP</option>
-            <option value="icmp">L4 ICMP</option>
-            <option value="gre">GRE (ERSPAN carrier)</option>
-            <option value="erspan">ERSPAN header</option>
-            <option value="payload">L7 payload</option>
-          </optgroup>
-          <optgroup label="Inner (ERSPAN captured frame)">
-            <option value="in-ethernet">Inner Ethernet</option>
-            <option value="in-ip">Inner IPv4</option>
-            <option value="in-tcp">Inner TCP</option>
-            <option value="in-udp">Inner UDP</option>
-            <option value="in-payload">Inner payload</option>
-          </optgroup>
-        </select>
-      </label>
       <span class="inline" style="display:inline-flex;gap:10px;align-items:center">
         <span>Header keyword:</span>
         <label class="inline"><input type="radio" name="hdrKw" value="header end" checked/> <span class="mono">header end</span> <span class="muted-pill">default</span></label>
@@ -1884,8 +1861,6 @@ function rulePrefix(layer) {
 }
 
 function pickReferenceLayer(selBitStart, kw) {
-  const choice = $("refLayer").value;
-  if (choice !== "auto") return choice;
   const byte = Math.floor(selBitStart / 8);
   const L = CURRENT.layers;
   // Innermost → outermost
@@ -2359,7 +2334,6 @@ function wire() {
     OPEN_GROUPS.clear();
     renderTree();
   });
-  $("refLayer").addEventListener("change", generateUDF);
   for (const r of document.querySelectorAll('input[name="hdrKw"]')) {
     r.addEventListener("change", generateUDF);
   }
