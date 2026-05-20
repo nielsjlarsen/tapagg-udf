@@ -323,6 +323,10 @@
     word-break: break-all;
     min-height: 40px;
   }
+  .udf-out .acl-prefix {
+    color: var(--muted);
+    opacity: 0.6;
+  }
   .udf-meta {
     color: var(--muted);
     font-size: 12px;
@@ -1978,7 +1982,19 @@ function generateUDF() {
   if (rules.length > 1) {
     warn.textContent = `Selection covers ${rules.length} × 32-bit word${rules.length===1?"":"s"} – ${rules.length} rules generated (all must match).`;
   }
-  out.textContent = rules.length ? rules.join("\n") : "(no rule – selection sits outside the reference layer)";
+  if (rules.length) {
+    // Render with the ACL prefix dimmed and the actual payload-match part
+    // highlighted. The Copy button below pulls only the "payload …" portion.
+    out.innerHTML = rules
+      .map((r) => {
+        const i = r.indexOf("payload ");
+        if (i < 0) return escapeHtml(r);
+        return '<span class="acl-prefix">' + escapeHtml(r.slice(0, i)) + '</span>' + escapeHtml(r.slice(i));
+      })
+      .join("\n");
+  } else {
+    out.textContent = "(no rule – selection sits outside the reference layer)";
+  }
 
   // selection summary
   const where = layerLabel(
@@ -2287,8 +2303,18 @@ function wire() {
     r.addEventListener("change", generateUDF);
   }
   $("btnCopy").addEventListener("click", async () => {
+    // Strip the dimmed "permit ip any any " / "permit mac any any any " prefix
+    // so the clipboard contains just the "payload header … offset … pattern …
+    // mask …" portion the user actually pastes into an ACL line.
+    const text = $("udf").textContent
+      .split("\n")
+      .map((ln) => {
+        const i = ln.indexOf("payload ");
+        return (i >= 0) ? ln.slice(i) : ln;
+      })
+      .join("\n");
     try {
-      await navigator.clipboard.writeText($("udf").textContent);
+      await navigator.clipboard.writeText(text);
       $("btnCopy").textContent = "Copied!";
       setTimeout(() => { $("btnCopy").textContent = "Copy"; }, 1200);
     } catch (e) {
