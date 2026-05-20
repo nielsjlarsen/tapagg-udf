@@ -1883,7 +1883,7 @@ function rulePrefix(layer) {
   return "[sequence] [permit | deny] [protocol] [source] [destination]";
 }
 
-function pickReferenceLayer(selBitStart) {
+function pickReferenceLayer(selBitStart, kw) {
   const choice = $("refLayer").value;
   if (choice !== "auto") return choice;
   const byte = Math.floor(selBitStart / 8);
@@ -1896,6 +1896,31 @@ function pickReferenceLayer(selBitStart) {
     "mpls5","mpls4","mpls3","mpls2","mpls1","mpls0",
     "vlan1","vlan0","ethernet",
   ];
+
+  if (kw === "header end") {
+    // The natural Arista anchor for "header end" is the end of the L3 header
+    // chain. On Arista, GRE is parsed as part of that chain, so picking "ip"
+    // here ends up at the end of GRE when GRE is present (see layerByteAnchor).
+    // ERSPAN, inner frames, L4, and L7 are all "payload" from the parser's POV
+    // and live at the resulting offset, not at offset 0 of their own layer.
+    if (byte < (L.ip ? L.ip.byteStart : 0)) {
+      // Selection is before the IP header (raw L2 / VLAN / MPLS bytes) –
+      // header end of IP doesn't make sense; fall back to the closest L2
+      // layer end so offset 0 lands sensibly.
+      for (const k of ["mpls5","mpls4","mpls3","mpls2","mpls1","mpls0","vlan1","vlan0","ethernet"]) {
+        if (!L[k]) continue;
+        const end = L[k].byteStart + L[k].byteLen;
+        if (end <= byte) {
+          if (k.startsWith("vlan")) return "ethernet";
+          if (k.startsWith("mpls")) return "mpls";
+          return k;
+        }
+      }
+    }
+    return "ip";
+  }
+
+  // header start: deepest layer CONTAINING the selection
   for (const k of order) {
     if (!L[k]) continue;
     if (byte >= L[k].byteStart && byte < L[k].byteStart + L[k].byteLen) {
@@ -1915,10 +1940,39 @@ function layerByteStart(name) {
     if (L.vlan1) return L.vlan1.byteStart;
   }
   if (name === "mpls") {
-    // First MPLS label in the stack
     for (let i = 0; i < 6; i++) if (L["mpls" + i]) return L["mpls" + i].byteStart;
   }
   return L[name] ? L[name].byteStart : 0;
+}
+
+function layerByteEnd(name) {
+  const L = CURRENT.layers;
+  if (name === "vlan") {
+    if (L.vlan1) return L.vlan1.byteStart + L.vlan1.byteLen;
+    if (L.vlan0) return L.vlan0.byteStart + L.vlan0.byteLen;
+  }
+  if (name === "mpls") {
+    // End of the LAST MPLS label in the stack
+    for (let i = 5; i >= 0; i--) if (L["mpls" + i]) return L["mpls" + i].byteStart + L["mpls" + i].byteLen;
+  }
+  return L[name] ? L[name].byteStart + L[name].byteLen : 0;
+}
+
+// Anchor byte for a given reference layer + header keyword.
+// "header start" → first byte of the layer.
+// "header end"   → first byte AFTER the layer ends, i.e. offset 0 lands on
+//                  the next 4-byte word. Arista parses GRE as part of the L3
+//                  header chain, so when "ip header end" is asked for and GRE
+//                  is present, the anchor is the end of GRE (offset 0 lands on
+//                  the first word after GRE — which is the ERSPAN header or
+//                  whatever GRE carries).
+function layerByteAnchor(name, kw) {
+  const L = CURRENT.layers;
+  if (kw === "header end") {
+    if (name === "ip" && L.gre) return L.gre.byteStart + L.gre.byteLen;
+    return layerByteEnd(name);
+  }
+  return layerByteStart(name);
 }
 
 function generateUDF() {
@@ -1938,13 +1992,17 @@ function generateUDF() {
   const sMin = selectedBits[0];
   const sMax = selectedBits[selectedBits.length - 1];
 
+  const hdrKw  = (document.querySelector('input[name="hdrKw"]:checked') || { value: "header end" }).value;
+
   // Pick reference layer based on the FIRST selected bit so the offset is non-negative.
-  const layer = pickReferenceLayer(sMin);
-  const layerByteOffset = layerByteStart(layer);
+  const layer = pickReferenceLayer(sMin, hdrKw);
+  const layerByteOffset = layerByteAnchor(layer, hdrKw);
   const layerBitOffset  = layerByteOffset * 8;
 
   if (sMin < layerBitOffset) {
-    warn.textContent = "Some selected bits fall before the chosen reference layer – switch to an earlier reference layer.";
+    warn.textContent = (hdrKw === "header end")
+      ? "Some selected bits fall before the chosen anchor (end of the reference layer). Switch reference layer or use 'header start'."
+      : "Some selected bits fall before the chosen reference layer – switch to an earlier reference layer.";
   }
 
   // Group selected bits by 4-byte word index within the layer header.
@@ -1958,7 +2016,6 @@ function generateUDF() {
   }
 
   const prefix = rulePrefix(layer);
-  const hdrKw  = (document.querySelector('input[name="hdrKw"]:checked') || { value: "header end" }).value;
 
   const wordOffsets = Array.from(wordsMap.keys()).sort((a, b) => a - b);
   const rules = [];
