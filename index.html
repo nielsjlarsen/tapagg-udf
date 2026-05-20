@@ -18,17 +18,20 @@
     --red: #f48771;
     --sel: #264f78;
     --sel-strong: #094771;
-    --hl-eth: #3a2f1f;
-    --hl-vlan: #1f3a2f;
-    --hl-mpls: #3a3315;
-    --hl-ip: #1f2a3a;
-    --hl-tcp: #2f1f3a;
-    --hl-udp: #3a1f2f;
-    --hl-icmp: #1f3a25;
-    --hl-gre: #1f3a3a;
-    --hl-erspan: #3a1f1f;
-    --hl-pl: #2a2a1f;
-    --hl-inner: #2a3320;
+    /* One accent per protocol — used uniformly in the legend swatch,
+       the hex-view byte tint, and the field-tree group header. Inner
+       layers reuse their protocol color (an inner IPv4 byte is the
+       same blue as an outer IPv4 byte). */
+    --c-ethernet: #d7ba7d;
+    --c-vlan:     #4ec9b0;
+    --c-mpls:     #ce9178;
+    --c-ip:       #569cd6;
+    --c-tcp:      #c586c0;
+    --c-udp:      #f48771;
+    --c-icmp:     #b5cea8;
+    --c-gre:      #4fc1ff;
+    --c-erspan:   #f44747;
+    --c-payload:  #dcdcaa;
   }
   html, body {
     height: 100%;
@@ -205,17 +208,19 @@
   .byte + .byte { margin-left: 2px; }
   .byte:hover { outline: 1px solid var(--accent); }
   .byte.sel { background: var(--sel); color: white; }
-  .byte.eth, .byte.ethernet { background: var(--hl-eth); }
-  .byte.vlan { background: var(--hl-vlan); }
-  .byte.mpls { background: var(--hl-mpls); }
-  .byte.ip  { background: var(--hl-ip); }
-  .byte.tcp { background: var(--hl-tcp); }
-  .byte.udp { background: var(--hl-udp); }
-  .byte.icmp { background: var(--hl-icmp); }
-  .byte.gre { background: var(--hl-gre); }
-  .byte.erspan { background: var(--hl-erspan); }
-  .byte.pl, .byte.payload  { background: var(--hl-pl); }
-  .byte.inner { background: var(--hl-inner); }
+  /* Hex view byte tints – low-alpha mix of the protocol accent over the
+     panel background, so text stays legible and the color still matches
+     the legend swatch and the tree header. */
+  .byte.ethernet { background: color-mix(in srgb, var(--c-ethernet) 22%, transparent); }
+  .byte.vlan     { background: color-mix(in srgb, var(--c-vlan)     22%, transparent); }
+  .byte.mpls     { background: color-mix(in srgb, var(--c-mpls)     22%, transparent); }
+  .byte.ip       { background: color-mix(in srgb, var(--c-ip)       22%, transparent); }
+  .byte.tcp      { background: color-mix(in srgb, var(--c-tcp)      22%, transparent); }
+  .byte.udp      { background: color-mix(in srgb, var(--c-udp)      22%, transparent); }
+  .byte.icmp     { background: color-mix(in srgb, var(--c-icmp)     22%, transparent); }
+  .byte.gre      { background: color-mix(in srgb, var(--c-gre)      22%, transparent); }
+  .byte.erspan   { background: color-mix(in srgb, var(--c-erspan)   22%, transparent); }
+  .byte.payload  { background: color-mix(in srgb, var(--c-payload)  22%, transparent); }
   .byte.sel {
     background: var(--sel) !important;
   }
@@ -278,12 +283,18 @@
   }
   .tree .field .v { color: var(--green); margin-left: 8px; }
   .tree .field .meta { color: var(--muted); margin-left: 8px; }
-  .tree .group-eth > summary  { color: #d7ba7d; }
-  .tree .group-vlan > summary { color: #4ec9b0; }
-  .tree .group-ip  > summary  { color: #569cd6; }
-  .tree .group-tcp > summary  { color: #c586c0; }
-  .tree .group-udp > summary  { color: #f48771; }
-  .tree .group-pl  > summary  { color: #dcdcaa; }
+  /* Field tree group headers – same accent as the legend swatch and
+     the hex byte tint for that protocol. */
+  .tree .group-ethernet > summary { color: var(--c-ethernet); }
+  .tree .group-vlan     > summary { color: var(--c-vlan); }
+  .tree .group-mpls     > summary { color: var(--c-mpls); }
+  .tree .group-ip       > summary { color: var(--c-ip); }
+  .tree .group-tcp      > summary { color: var(--c-tcp); }
+  .tree .group-udp      > summary { color: var(--c-udp); }
+  .tree .group-icmp     > summary { color: var(--c-icmp); }
+  .tree .group-gre      > summary { color: var(--c-gre); }
+  .tree .group-erspan   > summary { color: var(--c-erspan); }
+  .tree .group-payload  > summary { color: var(--c-payload); }
   .tree details[open] > summary::before { content: "▾ "; }
   .tree details:not([open]) > summary::before { content: "▸ "; }
 
@@ -770,17 +781,16 @@
   <main class="main">
     <div class="panel-h2">Packet bytes (Wireshark-style)</div>
     <div class="legend-bar">
-      <span><span class="sw" style="background:var(--hl-eth)"></span>Ethernet</span>
-      <span><span class="sw" style="background:var(--hl-vlan)"></span>VLAN</span>
-      <span><span class="sw" style="background:var(--hl-mpls)"></span>MPLS</span>
-      <span><span class="sw" style="background:var(--hl-ip)"></span>IPv4</span>
-      <span><span class="sw" style="background:var(--hl-tcp)"></span>TCP</span>
-      <span><span class="sw" style="background:var(--hl-udp)"></span>UDP</span>
-      <span><span class="sw" style="background:var(--hl-icmp)"></span>ICMP</span>
-      <span><span class="sw" style="background:var(--hl-gre)"></span>GRE</span>
-      <span><span class="sw" style="background:var(--hl-erspan)"></span>ERSPAN</span>
-      <span><span class="sw" style="background:var(--hl-pl)"></span>Payload</span>
-      <span><span class="sw" style="background:var(--hl-inner)"></span>Inner frame</span>
+      <span><span class="sw" style="background:var(--c-ethernet)"></span>Ethernet</span>
+      <span><span class="sw" style="background:var(--c-vlan)"></span>VLAN</span>
+      <span><span class="sw" style="background:var(--c-mpls)"></span>MPLS</span>
+      <span><span class="sw" style="background:var(--c-ip)"></span>IPv4</span>
+      <span><span class="sw" style="background:var(--c-tcp)"></span>TCP</span>
+      <span><span class="sw" style="background:var(--c-udp)"></span>UDP</span>
+      <span><span class="sw" style="background:var(--c-icmp)"></span>ICMP</span>
+      <span><span class="sw" style="background:var(--c-gre)"></span>GRE</span>
+      <span><span class="sw" style="background:var(--c-erspan)"></span>ERSPAN</span>
+      <span><span class="sw" style="background:var(--c-payload)"></span>Payload</span>
     </div>
     <div id="hex" class="hex-wrap"></div>
     <div style="margin:6px 2px 12px 2px">
@@ -1607,6 +1617,20 @@ function applyClick(bits, ev) {
   }
 }
 
+// Map a structural layer name (e.g. "vlan0", "mpls3", "in-ip") to the
+// protocol *category* used for coloring everywhere in the UI.
+function layerCategory(layer) {
+  if (!layer) return "";
+  if (layer.startsWith("vlan") || layer === "in-vlan") return "vlan";
+  if (layer.startsWith("mpls")) return "mpls";
+  if (layer === "in-ethernet") return "ethernet";
+  if (layer === "in-ip")       return "ip";
+  if (layer === "in-tcp")      return "tcp";
+  if (layer === "in-udp")      return "udp";
+  if (layer === "in-payload")  return "payload";
+  return layer; // ethernet, ip, tcp, udp, icmp, gre, erspan, payload
+}
+
 function layerOfByte(byteIdx) {
   const L = CURRENT.layers;
   // Iterate innermost → outermost. First match wins so a nested layer
@@ -1621,10 +1645,7 @@ function layerOfByte(byteIdx) {
   for (const k of order) {
     if (!L[k]) continue;
     if (byteIdx >= L[k].byteStart && byteIdx < L[k].byteStart + L[k].byteLen) {
-      if (k.startsWith("vlan")) return "vlan";
-      if (k.startsWith("mpls")) return "mpls";
-      if (k.startsWith("in-")) return "inner";
-      return k;
+      return layerCategory(k);
     }
   }
   return "";
@@ -1781,7 +1802,7 @@ function renderTree() {
   for (const g of groups) {
     const det = document.createElement("details");
     det.open = OPEN_GROUPS.has(g.layer);
-    det.className = "group-" + (g.layer.startsWith("vlan") ? "vlan" : g.layer);
+    det.className = "group-" + layerCategory(g.layer);
     const sum = document.createElement("summary");
     sum.textContent = g.label + "  (" + g.fields.length + " fields)";
     det.appendChild(sum);
