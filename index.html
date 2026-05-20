@@ -29,6 +29,8 @@
     --c-tcp:      #c586c0;
     --c-udp:      #f48771;
     --c-icmp:     #b5cea8;
+    --c-sctp:     #ffb86c;
+    --c-quic:     #ff79c6;
     --c-gre:      #4fc1ff;
     --c-erspan:   #f44747;
     --c-payload:  #dcdcaa;
@@ -218,6 +220,8 @@
   .byte.tcp      { background: color-mix(in srgb, var(--c-tcp)      22%, transparent); }
   .byte.udp      { background: color-mix(in srgb, var(--c-udp)      22%, transparent); }
   .byte.icmp     { background: color-mix(in srgb, var(--c-icmp)     22%, transparent); }
+  .byte.sctp     { background: color-mix(in srgb, var(--c-sctp)     22%, transparent); }
+  .byte.quic     { background: color-mix(in srgb, var(--c-quic)     22%, transparent); }
   .byte.gre      { background: color-mix(in srgb, var(--c-gre)      22%, transparent); }
   .byte.erspan   { background: color-mix(in srgb, var(--c-erspan)   22%, transparent); }
   .byte.payload  { background: color-mix(in srgb, var(--c-payload)  22%, transparent); }
@@ -292,6 +296,8 @@
   .tree .group-tcp      > summary { color: var(--c-tcp); }
   .tree .group-udp      > summary { color: var(--c-udp); }
   .tree .group-icmp     > summary { color: var(--c-icmp); }
+  .tree .group-sctp     > summary { color: var(--c-sctp); }
+  .tree .group-quic     > summary { color: var(--c-quic); }
   .tree .group-gre      > summary { color: var(--c-gre); }
   .tree .group-erspan   > summary { color: var(--c-erspan); }
   .tree .group-payload  > summary { color: var(--c-payload); }
@@ -477,6 +483,7 @@
             <option value="17">17 (UDP)</option>
             <option value="1">1 (ICMP)</option>
             <option value="47">47 (GRE)</option>
+            <option value="132">132 (SCTP)</option>
             <option value="custom">custom…</option>
           </select>
           <input class="mono" id="ipProtoCustom" value="47" style="display:none;margin-top:4px" />
@@ -501,6 +508,8 @@
       <label class="inline"><input type="radio" name="l4" id="l4Tcp"  value="tcp" checked/> TCP</label>
       <label class="inline"><input type="radio" name="l4" id="l4Udp"  value="udp"/> UDP</label>
       <label class="inline"><input type="radio" name="l4" id="l4Icmp" value="icmp"/> ICMP</label>
+      <label class="inline"><input type="radio" name="l4" id="l4Sctp" value="sctp"/> SCTP</label>
+      <label class="inline"><input type="radio" name="l4" id="l4Quic" value="quic"/> QUIC</label>
 
       <div id="l4TcpFields">
         <div class="row">
@@ -563,6 +572,46 @@
         <label>Rest of header (4 bytes, hex)</label>
         <input class="mono" id="icmpRest" value="0x00000000"/>
         <div class="hint">For Echo Request/Reply this is Identifier(16) + Sequence(16). Checksum is auto-computed over the whole ICMP message.</div>
+      </div>
+
+      <div id="l4SctpFields" style="display:none">
+        <div class="row">
+          <div><label>Src port</label><input type="number" id="sctpSrc" value="2944" min="0" max="65535"/></div>
+          <div><label>Dst port</label><input type="number" id="sctpDst" value="2944" min="0" max="65535"/></div>
+        </div>
+        <label>Verification Tag</label>
+        <input class="mono" id="sctpVtag" value="0x00000000"/>
+        <label>Checksum</label>
+        <input class="mono" id="sctpChk" value="0x00000000"/>
+        <div class="hint">SCTP uses CRC32C, which is <i>not</i> auto-computed. Set the literal value you want to match, or leave 0 — the rule generator doesn't care which.</div>
+      </div>
+
+      <div id="l4QuicFields" style="display:none">
+        <div class="hint">QUIC runs over UDP (typically dst port 443). The UDP header is built automatically beneath QUIC.</div>
+        <div class="row">
+          <div><label>UDP Src port</label><input type="number" id="quicUdpSrc" value="54321" min="0" max="65535"/></div>
+          <div><label>UDP Dst port</label><input type="number" id="quicUdpDst" value="443" min="0" max="65535"/></div>
+        </div>
+        <label>Header form</label>
+        <div class="tcp-flags">
+          <label class="inline"><input type="radio" name="quicForm" value="long" checked/> Long header</label>
+          <label class="inline"><input type="radio" name="quicForm" value="short"/> Short (1-RTT)</label>
+        </div>
+        <label>First byte (Header form + flags)</label>
+        <input class="mono" id="quicFirstByte" value="0xc0"/>
+        <div class="hint">MSB = Header Form (1=Long, 0=Short); next bit = Fixed bit (must be 1). Lower bits encode type / packet-number length.</div>
+        <div id="quicLongOnlyVer">
+          <label>Version</label>
+          <input class="mono" id="quicVersion" value="0x00000001"/>
+        </div>
+        <label>Destination Connection ID (hex)</label>
+        <input class="mono" id="quicDcid" value="01 02 03 04 05 06 07 08"/>
+        <div id="quicLongOnlyScid">
+          <label>Source Connection ID (hex)</label>
+          <input class="mono" id="quicScid" value="0a 0b 0c 0d 0e 0f 10 11"/>
+        </div>
+        <label>Packet Number (hex, 1–4 bytes)</label>
+        <input class="mono" id="quicPktNum" value="00"/>
       </div>
       </div>
     </details>
@@ -788,6 +837,8 @@
       <span><span class="sw" style="background:var(--c-tcp)"></span>TCP</span>
       <span><span class="sw" style="background:var(--c-udp)"></span>UDP</span>
       <span><span class="sw" style="background:var(--c-icmp)"></span>ICMP</span>
+      <span><span class="sw" style="background:var(--c-sctp)"></span>SCTP</span>
+      <span><span class="sw" style="background:var(--c-quic)"></span>QUIC</span>
       <span><span class="sw" style="background:var(--c-gre)"></span>GRE</span>
       <span><span class="sw" style="background:var(--c-erspan)"></span>ERSPAN</span>
       <span><span class="sw" style="background:var(--c-payload)"></span>Payload</span>
@@ -1369,6 +1420,68 @@ function buildPacket() {
     fields.push({ layer: "icmp", name: "  · Sequence Number (Echo)", bitStart: rP * 8 + 16, bitLen: 16, value: rest & 0xffff,         hexValue: "0x" + hex4(rest & 0xffff) });
 
     markLayerEnd("icmp");
+  } else if (l4Type === "sctp") {
+    markLayerStart("sctp");
+    pushU16("sctp", "SCTP Src Port",          (+$("sctpSrc").value) & 0xffff);
+    pushU16("sctp", "SCTP Dst Port",          (+$("sctpDst").value) & 0xffff);
+    pushU32("sctp", "SCTP Verification Tag",  parseHex32($("sctpVtag").value));
+    pushU32("sctp", "SCTP Checksum (CRC32C)", parseHex32($("sctpChk").value));
+    markLayerEnd("sctp");
+  } else if (l4Type === "quic") {
+    // QUIC runs on top of UDP; build a UDP header first (with QUIC's port inputs),
+    // then the QUIC header above it. IP Protocol is 17 (set by the L4 sync).
+    markLayerStart("udp");
+    pushU16("udp", "UDP Src Port", (+$("quicUdpSrc").value) & 0xffff);
+    pushU16("udp", "UDP Dst Port", (+$("quicUdpDst").value) & 0xffff);
+    const udpLenPos = bytes.length;
+    bytes.push(0, 0);
+    fields.push({ layer: "udp", name: "UDP Length",   bitStart: udpLenPos * 8, bitLen: 16, value: 0, hexValue: "0x0000" });
+    const udpCsPos = bytes.length;
+    bytes.push(0, 0);
+    fields.push({ layer: "udp", name: "UDP Checksum", bitStart: udpCsPos * 8,  bitLen: 16, value: 0, hexValue: "0x0000" });
+    markLayerEnd("udp");
+
+    markLayerStart("quic");
+    const form = (document.querySelector('input[name="quicForm"]:checked') || { value: "long" }).value;
+    const fb = parseHexByte($("quicFirstByte").value);
+    const fbPos = bytes.length;
+    bytes.push(fb);
+    fields.push({ layer: "quic", name: "QUIC First Byte",       bitStart: fbPos * 8,     bitLen: 8, value: fb, hexValue: "0x" + hex2(fb) });
+    fields.push({ layer: "quic", name: "  · Header Form (1=Long)", bitStart: fbPos * 8,     bitLen: 1, value: (fb >> 7) & 1, hexValue: String((fb >> 7) & 1) });
+    fields.push({ layer: "quic", name: "  · Fixed Bit",            bitStart: fbPos * 8 + 1, bitLen: 1, value: (fb >> 6) & 1, hexValue: String((fb >> 6) & 1) });
+
+    if (form === "long") {
+      pushU32("quic", "QUIC Version", parseHex32($("quicVersion").value));
+      const dcid = parseHexBytes($("quicDcid").value);
+      pushU8("quic", "QUIC DCID Length", dcid.length);
+      if (dcid.length) {
+        const p = bytes.length;
+        bytes.push(...dcid);
+        fields.push({ layer: "quic", name: "QUIC Destination Connection ID", bitStart: p * 8, bitLen: dcid.length * 8, value: dcid, hexValue: dcid.map(hex2).join(" ") });
+      }
+      const scid = parseHexBytes($("quicScid").value);
+      pushU8("quic", "QUIC SCID Length", scid.length);
+      if (scid.length) {
+        const p = bytes.length;
+        bytes.push(...scid);
+        fields.push({ layer: "quic", name: "QUIC Source Connection ID",      bitStart: p * 8, bitLen: scid.length * 8, value: scid, hexValue: scid.map(hex2).join(" ") });
+      }
+    } else {
+      // Short header has DCID immediately (length known from connection state)
+      const dcid = parseHexBytes($("quicDcid").value);
+      if (dcid.length) {
+        const p = bytes.length;
+        bytes.push(...dcid);
+        fields.push({ layer: "quic", name: "QUIC Destination Connection ID", bitStart: p * 8, bitLen: dcid.length * 8, value: dcid, hexValue: dcid.map(hex2).join(" ") });
+      }
+    }
+    const pn = parseHexBytes($("quicPktNum").value);
+    if (pn.length) {
+      const p = bytes.length;
+      bytes.push(...pn);
+      fields.push({ layer: "quic", name: "QUIC Packet Number", bitStart: p * 8, bitLen: pn.length * 8, value: pn, hexValue: pn.map(hex2).join(" ") });
+    }
+    markLayerEnd("quic");
   }
 
   // ---------- Payload (outer; skipped when ERSPAN carries an inner frame) ----------
@@ -1400,15 +1513,14 @@ function buildPacket() {
   csField.value = csum;
   csField.hexValue = "0x" + hex4(csum);
 
-  // UDP length
-  if (l4Type === "udp") {
+  // UDP length (also fires for QUIC, which builds a UDP header underneath)
+  if ((l4Type === "udp" || l4Type === "quic") && layers.udp) {
     const udpStart = layers.udp.byteStart;
-    const udpLen = bytes.length - udpStart; // includes payload
+    const udpLen = bytes.length - udpStart; // includes payload (or QUIC bytes)
     bytes[udpStart + 4] = (udpLen >> 8) & 0xff;
     bytes[udpStart + 5] = udpLen & 0xff;
     const f = fields.find((x) => x.name === "UDP Length");
-    f.value = udpLen;
-    f.hexValue = udpLen + " (0x" + hex4(udpLen) + ")";
+    if (f) { f.value = udpLen; f.hexValue = udpLen + " (0x" + hex4(udpLen) + ")"; }
   }
 
   // GRE checksum (only when C flag is set; covers GRE header + everything after it)
@@ -1638,7 +1750,7 @@ function layerOfByte(byteIdx) {
   const order = [
     "in-payload","in-udp","in-tcp","in-ip","in-vlan","in-ethernet",
     "erspan","gre",
-    "payload","icmp","udp","tcp","ip",
+    "payload","quic","icmp","sctp","udp","tcp","ip",
     "mpls5","mpls4","mpls3","mpls2","mpls1","mpls0",
     "vlan1","vlan0","ethernet",
   ];
@@ -1835,6 +1947,8 @@ function layerLabel(layer) {
     case "tcp":          return "TCP";
     case "udp":          return "UDP";
     case "icmp":         return "ICMP";
+    case "sctp":         return "SCTP";
+    case "quic":         return "QUIC";
     case "gre":          return "GRE";
     case "erspan":       return "ERSPAN";
     case "payload":      return "Payload";
@@ -1888,7 +2002,7 @@ function pickReferenceLayer(selBitStart, kw) {
   const order = [
     "in-payload","in-udp","in-tcp","in-ip","in-vlan","in-ethernet",
     "erspan","gre",
-    "payload","icmp","udp","tcp","ip",
+    "payload","quic","icmp","sctp","udp","tcp","ip",
     "mpls5","mpls4","mpls3","mpls2","mpls1","mpls0",
     "vlan1","vlan0","ethernet",
   ];
@@ -2261,6 +2375,8 @@ function wire() {
     $("l4TcpFields").style.display  = (v === "tcp")  ? "" : "none";
     $("l4UdpFields").style.display  = (v === "udp")  ? "" : "none";
     $("l4IcmpFields").style.display = (v === "icmp") ? "" : "none";
+    $("l4SctpFields").style.display = (v === "sctp") ? "" : "none";
+    $("l4QuicFields").style.display = (v === "quic") ? "" : "none";
   }
 
   // L4 radio: toggle TCP/UDP/ICMP visibility AND sync the IPv4 Protocol dropdown.
@@ -2270,9 +2386,15 @@ function wire() {
     r.addEventListener("change", () => {
       const v = document.querySelector('input[name="l4"]:checked').value;
       syncL4Visibility(v);
-      // Mirror into IPv4 Protocol: TCP→6, UDP→17, ICMP→1. Leave Protocol alone
-      // when L4=None, so the user can keep a GRE / custom value.
-      const targetProto = (v === "tcp") ? "6" : (v === "udp") ? "17" : (v === "icmp") ? "1" : null;
+      // Mirror into IPv4 Protocol: TCP→6, UDP/QUIC→17, ICMP→1, SCTP→132.
+      // Leave Protocol alone when L4=None, so the user can keep a GRE /
+      // custom value.
+      const targetProto =
+        (v === "tcp")  ? "6"  :
+        (v === "udp")  ? "17" :
+        (v === "quic") ? "17" :
+        (v === "icmp") ? "1"  :
+        (v === "sctp") ? "132" : null;
       if (targetProto !== null && $("ipProto").value !== targetProto) {
         $("ipProto").value = targetProto;
         $("ipProtoCustom").style.display = "none";
@@ -2284,7 +2406,8 @@ function wire() {
   $("ipProto").addEventListener("change", () => {
     $("ipProtoCustom").style.display = ($("ipProto").value === "custom") ? "" : "none";
     const v = $("ipProto").value;
-    const target = (v === "6") ? "tcp" : (v === "17") ? "udp" : (v === "1") ? "icmp" : "none";
+    // Reverse mapping: prefer plain UDP for 17 (user can flip to QUIC manually).
+    const target = (v === "6") ? "tcp" : (v === "17") ? "udp" : (v === "1") ? "icmp" : (v === "132") ? "sctp" : "none";
     const cur = (document.querySelector('input[name="l4"]:checked') || { value: "none" }).value;
     if (cur !== target) {
       const radio = document.querySelector('input[name="l4"][value="' + target + '"]');
@@ -2295,6 +2418,14 @@ function wire() {
     }
   });
   // ICMP type "custom" sub-input
+  // QUIC long/short toggles the Version + SCID rows
+  for (const r of document.querySelectorAll('input[name="quicForm"]')) {
+    r.addEventListener("change", () => {
+      const v = (document.querySelector('input[name="quicForm"]:checked') || { value: "long" }).value;
+      $("quicLongOnlyVer").style.display  = (v === "long") ? "" : "none";
+      $("quicLongOnlyScid").style.display = (v === "long") ? "" : "none";
+    });
+  }
   $("icmpType").addEventListener("change", () => {
     $("icmpTypeCustom").style.display = ($("icmpType").value === "custom") ? "" : "none";
     renderIcmpCodes();
