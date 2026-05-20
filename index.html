@@ -2007,39 +2007,41 @@ function pickReferenceLayer(selBitStart, kw) {
     "vlan1","vlan0","ethernet",
   ];
 
-  if (kw === "header end") {
-    // The natural Arista anchor for "header end" is the end of the L3 header
-    // chain. On Arista, GRE is parsed as part of that chain, so picking "ip"
-    // here ends up at the end of GRE when GRE is present (see layerByteAnchor).
-    // ERSPAN, inner frames, L4, and L7 are all "payload" from the parser's POV
-    // and live at the resulting offset, not at offset 0 of their own layer.
+  // Both Arista anchors ("header start" and "header end") are measured
+  // relative to the IP (L3) header. Everything after IP — GRE, ERSPAN,
+  // inner frames, L4, L7 — is "payload" from the parser's POV and lives at
+  // a non-zero offset from one of those two anchors, not at offset 0 of
+  // its own layer.
+  if (kw === "header end" || kw === "header start") {
     if (byte < (L.ip ? L.ip.byteStart : 0)) {
       // Selection is before the IP header (raw L2 / VLAN / MPLS bytes) –
-      // header end of IP doesn't make sense; fall back to the closest L2
-      // layer end so offset 0 lands sensibly.
-      for (const k of ["mpls5","mpls4","mpls3","mpls2","mpls1","mpls0","vlan1","vlan0","ethernet"]) {
-        if (!L[k]) continue;
-        const end = L[k].byteStart + L[k].byteLen;
-        if (end <= byte) {
-          if (k.startsWith("vlan")) return "ethernet";
-          if (k.startsWith("mpls")) return "mpls";
-          return k;
+      // anchoring on IP doesn't make sense, so fall back to the closest L2
+      // layer. For "header end" pick the layer whose end sits before the
+      // selection; for "header start" pick the deepest layer containing it.
+      if (kw === "header end") {
+        for (const k of ["mpls5","mpls4","mpls3","mpls2","mpls1","mpls0","vlan1","vlan0","ethernet"]) {
+          if (!L[k]) continue;
+          const end = L[k].byteStart + L[k].byteLen;
+          if (end <= byte) {
+            if (k.startsWith("vlan")) return "ethernet";
+            if (k.startsWith("mpls")) return "mpls";
+            return k;
+          }
+        }
+      } else {
+        for (const k of order) {
+          if (!L[k]) continue;
+          if (byte >= L[k].byteStart && byte < L[k].byteStart + L[k].byteLen) {
+            if (k.startsWith("vlan")) return "ethernet";
+            if (k.startsWith("mpls")) return "mpls";
+            return k;
+          }
         }
       }
     }
     return "ip";
   }
 
-  // header start: deepest layer CONTAINING the selection
-  for (const k of order) {
-    if (!L[k]) continue;
-    if (byte >= L[k].byteStart && byte < L[k].byteStart + L[k].byteLen) {
-      if (k.startsWith("vlan")) return "ethernet";
-      if (k.startsWith("mpls")) return "mpls";
-      if (k.startsWith("in-")) return k;        // keep "in-ethernet" etc. as-is
-      return k;
-    }
-  }
   return "ip";
 }
 
@@ -2069,7 +2071,9 @@ function layerByteEnd(name) {
 }
 
 // Anchor byte for a given reference layer + header keyword.
-// "header start" → first byte of the layer.
+// "header start" → first byte of the layer (for IP this is the start of the
+//                  IPv4 header; offset is measured in 4-byte words forward
+//                  through IP, GRE, L4, payload, etc.).
 // "header end"   → first byte AFTER the layer ends, i.e. offset 0 lands on
 //                  the next 4-byte word. Arista parses GRE as part of the L3
 //                  header chain, so when "ip header end" is asked for and GRE
