@@ -2230,16 +2230,18 @@ function generateSteering() {
     (fully.length === 1 ? ` · value: <span class="mono">${escapeHtml(String(fully[0].hexValue))}</span>` : "");
 }
 
-// Anchor byte for an Aegis traffic-policy match line. The Traffic Policy
-// parser reports the offset in BYTES (not 4-byte words), but the offset
-// must be aligned to the chosen width: a multiple of 2 for 16-bit matches
-// and a multiple of 4 for 32-bit matches, measured from the anchor. The
-// maximum offset accepted is 128 bytes. "ethernet-header-end" is the byte
-// right after the pure 14-byte Ethernet header, so VLAN/MPLS tags still
-// contribute to the offset of any IP-or-later field. "ip-header-end"
-// mirrors the steering "header end" behaviour: GRE is parsed as part of
-// the IP chain on Arista, so the anchor lands after GRE when GRE/ERSPAN
-// is present.
+// Anchor byte for an Aegis traffic-policy match line. The offset reported
+// by the Traffic Policy parser is a count of `width`-sized chunks from the
+// anchor (offset 0 = the first chunk after the anchor, offset 1 = the
+// second, …), so a 16-bit match at byte 12 past the anchor is "offset 6"
+// and a 32-bit match at byte 12 past the anchor is "offset 3". The match
+// window must be aligned to the chunk size relative to the anchor; the
+// parser caps coverage at 128 bytes from the anchor. "ethernet-header-end"
+// is the byte right after the pure 14-byte Ethernet header, so VLAN/MPLS
+// tags still contribute to the offset of any IP-or-later field.
+// "ip-header-end" mirrors the steering "header end" behaviour: GRE is
+// parsed as part of the IP chain on Arista, so the anchor lands after GRE
+// when GRE/ERSPAN is present.
 // Convert a packet-field name into something usable as an Aegis location
 // identifier: runs of non-identifier characters collapse to a single hyphen,
 // leading/trailing hyphens stripped. "TCP Src Port" → "TCP-Src-Port",
@@ -2322,15 +2324,20 @@ function generateAegis() {
     prevBit = b;
   }
 
-  const MAX_OFFSET = 128;
+  // Aegis caps the offset at 128 bytes of coverage from the anchor; the
+  // syntax expresses the offset as a count of `width`-sized chunks
+  // ("offset N bytes length 16|32 bits" means "skip N chunks of that
+  // width"), so the emitted value is byte-offset / windowBytes.
+  const MAX_OFFSET_BYTES = 128;
   const lines = [];
   let emittedWindows = 0;
   let droppedBefore = 0;
   let droppedOver   = 0;
   for (const w of windows) {
-    const off = w.startByte - anchorByte;
-    if (off < 0)            { droppedBefore++; continue; }
-    if (off > MAX_OFFSET)   { droppedOver++;   continue; }
+    const offBytes = w.startByte - anchorByte;
+    if (offBytes < 0)                { droppedBefore++; continue; }
+    if (offBytes > MAX_OFFSET_BYTES) { droppedOver++;   continue; }
+    const off = offBytes / windowBytes;
     emittedWindows++;
 
     let value = 0n;
@@ -2358,7 +2365,7 @@ function generateAegis() {
     warnParts.push(`${droppedBefore} window${droppedBefore===1?"":"s"} dropped: selection sits before anchor "${anchor}".`);
   }
   if (droppedOver) {
-    warnParts.push(`${droppedOver} window${droppedOver===1?"":"s"} dropped: offset exceeds the ${MAX_OFFSET}-byte maximum (pick a closer anchor).`);
+    warnParts.push(`${droppedOver} window${droppedOver===1?"":"s"} dropped: offset exceeds the ${MAX_OFFSET_BYTES}-byte maximum (pick a closer anchor).`);
   }
   if (emittedWindows > 1) {
     warnParts.push(`Selection covers ${emittedWindows} × ${width}-bit windows – ${emittedWindows} location pairs emitted (all must match).`);
