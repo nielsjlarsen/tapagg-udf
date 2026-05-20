@@ -864,10 +864,31 @@
       <span id="selSummary"><b>nothing</b> – click a field or drag-select bytes above</span>
     </div>
     <div class="toolbar">
-      <span class="inline" style="display:inline-flex;gap:10px;align-items:center">
+      <span class="inline" style="display:inline-flex;gap:10px;align-items:center;flex-wrap:wrap;width:100%">
+        <span>Output style:</span>
+        <label class="inline"><input type="radio" name="ruleStyle" value="steering" checked/> <span class="mono">Traffic Steering / Policy Maps</span></label>
+        <label class="inline"><input type="radio" name="ruleStyle" value="aegis"/> <span class="mono">Traffic Policies / Aegis</span></label>
+      </span>
+      <span id="hdrKwRow" class="inline" style="display:inline-flex;gap:10px;align-items:center;flex-wrap:wrap;width:100%">
         <span>Header keyword:</span>
         <label class="inline"><input type="radio" name="hdrKw" value="header end" checked/> <span class="mono">header end</span> <span class="muted-pill">default</span></label>
         <label class="inline"><input type="radio" name="hdrKw" value="header start"/> <span class="mono">header start</span></label>
+      </span>
+      <span id="aegisLocRow" class="inline" style="display:none;gap:10px;align-items:center;flex-wrap:wrap;width:100%">
+        <span>Location:</span>
+        <input type="text" id="aegisLocName" value="&lt;location-name&gt;" class="mono" style="width:180px;background:#fff;color:#000;border-color:#999"/>
+      </span>
+      <span id="aegisAnchorRow" class="inline" style="display:none;gap:10px;align-items:center;flex-wrap:wrap;width:100%">
+        <span>Anchor:</span>
+        <label class="inline"><input type="radio" name="aegisAnchor" value="ip-header-end" checked/> <span class="mono">ip-header-end</span></label>
+        <label class="inline"><input type="radio" name="aegisAnchor" value="ip-header-start"/> <span class="mono">ip-header-start</span></label>
+        <label class="inline"><input type="radio" name="aegisAnchor" value="packet-start"/> <span class="mono">packet-start</span></label>
+        <label class="inline"><input type="radio" name="aegisAnchor" value="ethernet-header-end"/> <span class="mono">ethernet-header-end</span></label>
+      </span>
+      <span id="aegisWidthRow" class="inline" style="display:none;gap:10px;align-items:center;flex-wrap:wrap;width:100%">
+        <span>Width:</span>
+        <label class="inline"><input type="radio" name="aegisWidth" value="16" checked/> <span class="mono">16-bit</span></label>
+        <label class="inline"><input type="radio" name="aegisWidth" value="32"/> <span class="mono">32-bit</span></label>
       </span>
       <button id="btnCopy">Copy</button>
     </div>
@@ -1704,6 +1725,13 @@ function fieldPartiallySelected(f) {
 }
 let SHOW_BITS = false;
 
+// Last value the script auto-populated into the Aegis location input. Used
+// to detect "user has typed a custom name" — if the input still matches the
+// last auto-value (or the placeholder), we keep auto-naming from the
+// selected field; otherwise we leave the user's text alone.
+const AEGIS_LOC_PLACEHOLDER = "<location-name>";
+let aegisLocAutoValue = AEGIS_LOC_PLACEHOLDER;
+
 function selBits() { return Array.from(SEL).sort((a, b) => a - b); }
 function selEmpty() { return SEL.size === 0; }
 function selMin() { let m = Infinity; for (const b of SEL) if (b < m) m = b; return m; }
@@ -2090,6 +2118,12 @@ function layerByteAnchor(name, kw) {
 }
 
 function generateUDF() {
+  const style = (document.querySelector('input[name="ruleStyle"]:checked') || { value: "steering" }).value;
+  if (style === "aegis") return generateAegis();
+  return generateSteering();
+}
+
+function generateSteering() {
   const out = $("udf");
   const meta = $("selSummary");
   const warn = $("udfWarn");
@@ -2193,6 +2227,165 @@ function generateUDF() {
   }
   meta.innerHTML = head +
     `· reference: <b>${where}</b> · ${wordOffsets.length} word${wordOffsets.length!==1?"s":""}: ${wordOffsets.map(w => "offset " + w).join(", ")}` +
+    (fully.length === 1 ? ` · value: <span class="mono">${escapeHtml(String(fully[0].hexValue))}</span>` : "");
+}
+
+// Anchor byte for an Aegis traffic-policy match line. The Traffic Policy
+// parser reports the offset in BYTES (not 4-byte words), but the offset
+// must be aligned to the chosen width: a multiple of 2 for 16-bit matches
+// and a multiple of 4 for 32-bit matches, measured from the anchor. The
+// maximum offset accepted is 128 bytes. "ethernet-header-end" is the byte
+// right after the pure 14-byte Ethernet header, so VLAN/MPLS tags still
+// contribute to the offset of any IP-or-later field. "ip-header-end"
+// mirrors the steering "header end" behaviour: GRE is parsed as part of
+// the IP chain on Arista, so the anchor lands after GRE when GRE/ERSPAN
+// is present.
+// Convert a packet-field name into something usable as an Aegis location
+// identifier: runs of non-identifier characters collapse to a single hyphen,
+// leading/trailing hyphens stripped. "TCP Src Port" → "TCP-Src-Port",
+// "  · Header Form (1=Long)" → "Header-Form-1-Long".
+function sanitizeAegisName(s) {
+  return String(s || "").replace(/[^A-Za-z0-9_]+/g, "-").replace(/^-+|-+$/g, "");
+}
+
+function aegisAnchorByte(anchor) {
+  const L = CURRENT.layers;
+  switch (anchor) {
+    case "packet-start":
+      return 0;
+    case "ethernet-header-end":
+      return L.ethernet ? L.ethernet.byteStart + L.ethernet.byteLen : 14;
+    case "ip-header-start":
+      return L.ip ? L.ip.byteStart : 0;
+    case "ip-header-end":
+    default:
+      if (L.gre) return L.gre.byteStart + L.gre.byteLen;
+      return L.ip ? L.ip.byteStart + L.ip.byteLen : 0;
+  }
+}
+
+function generateAegis() {
+  const out = $("udf");
+  const meta = $("selSummary");
+  const warn = $("udfWarn");
+  warn.textContent = "";
+
+  if (selEmpty()) {
+    out.textContent = "(select a field, byte, or bit to generate the rule)";
+    meta.innerHTML = "<b>nothing</b> – click a field, byte, or (in bit-level view) a bit";
+    return;
+  }
+
+  const bytes = CURRENT.bytes;
+  const selectedBits = selBits();
+  const anchor  = (document.querySelector('input[name="aegisAnchor"]:checked') || { value: "ip-header-end" }).value;
+  const width   = parseInt((document.querySelector('input[name="aegisWidth"]:checked') || { value: "16" }).value, 10);
+
+  // Auto-populate the location name from the selected field, unless the user
+  // has typed a custom value.
+  const fullySelected = CURRENT.fields.filter(fieldFullySelected);
+  const locInput = $("aegisLocName");
+  if (fullySelected.length === 1) {
+    const autoName = sanitizeAegisName(fullySelected[0].name);
+    if (autoName && (locInput.value === aegisLocAutoValue || locInput.value === "" || locInput.value === AEGIS_LOC_PLACEHOLDER)) {
+      locInput.value = autoName;
+      aegisLocAutoValue = autoName;
+    }
+  }
+  const locName = (locInput.value || "").trim() || AEGIS_LOC_PLACEHOLDER;
+
+  const windowBytes = width / 8;   // 2 or 4
+  const anchorByte  = aegisAnchorByte(anchor);
+
+  // Group selected bits into windows. Each window covers `windowBytes` of
+  // packet bytes; its start must be aligned to `windowBytes` measured from
+  // the anchor (so the resulting offset is always divisible by 2 or 4). We
+  // snap DOWN from the first selected byte to the nearest aligned position
+  // so the selection is always covered. A contiguous block that overflows
+  // the window rolls into the next aligned window; a gap between selected
+  // bits also starts a fresh window.
+  const windows = [];
+  let cur = null;
+  let prevBit = null;
+  for (const b of selectedBits) {
+    const byte = b >> 3;
+    if (prevBit !== null && b !== prevBit + 1) cur = null;
+    if (cur === null || byte >= cur.startByte + windowBytes) {
+      const diff = byte - anchorByte;
+      const startByte = (diff >= 0)
+        ? anchorByte + Math.floor(diff / windowBytes) * windowBytes
+        : byte;   // before anchor — will be dropped with a warning below
+      cur = { startByte, bits: [] };
+      windows.push(cur);
+    }
+    cur.bits.push(b);
+    prevBit = b;
+  }
+
+  const MAX_OFFSET = 128;
+  const lines = [];
+  let emittedWindows = 0;
+  let droppedBefore = 0;
+  let droppedOver   = 0;
+  for (const w of windows) {
+    const off = w.startByte - anchorByte;
+    if (off < 0)            { droppedBefore++; continue; }
+    if (off > MAX_OFFSET)   { droppedOver++;   continue; }
+    emittedWindows++;
+
+    let value = 0n;
+    let mask  = 0n;
+    for (const absBit of w.bits) {
+      const byteIdx = absBit >> 3;
+      const bInByte = absBit & 7;                         // 0 = MSB of byte
+      const i       = byteIdx - w.startByte;              // 0..windowBytes-1
+      if (i < 0 || i >= windowBytes) continue;
+      const winBit  = (windowBytes - 1 - i) * 8 + (7 - bInByte);
+      const byteVal = bytes[byteIdx] || 0;
+      const bitVal  = (byteVal >> (7 - bInByte)) & 1;
+      mask |= (1n << BigInt(winBit));
+      if (bitVal) value |= (1n << BigInt(winBit));
+    }
+    const hexLen = windowBytes * 2;
+    const valHex = "0x" + value.toString(16).padStart(hexLen, "0");
+    const maskHex = "0x" + mask.toString(16).padStart(hexLen, "0");
+    lines.push(`location ${locName} ${anchor} offset ${off} bytes length ${width} bits`);
+    lines.push(`location ${locName} value ${valHex} mask ${maskHex}`);
+  }
+
+  const warnParts = [];
+  if (droppedBefore) {
+    warnParts.push(`${droppedBefore} window${droppedBefore===1?"":"s"} dropped: selection sits before anchor "${anchor}".`);
+  }
+  if (droppedOver) {
+    warnParts.push(`${droppedOver} window${droppedOver===1?"":"s"} dropped: offset exceeds the ${MAX_OFFSET}-byte maximum (pick a closer anchor).`);
+  }
+  if (emittedWindows > 1) {
+    warnParts.push(`Selection covers ${emittedWindows} × ${width}-bit windows – ${emittedWindows} location pairs emitted (all must match).`);
+  }
+  warn.textContent = warnParts.join(" ");
+
+  if (lines.length) {
+    out.textContent = lines.join("\n");
+  } else {
+    out.textContent = "(no rule – selection sits before the chosen anchor)";
+  }
+
+  const blocks = countContiguousBlocks(selectedBits);
+  const fully = fullySelected;
+  let head;
+  if (fully.length === 1) {
+    const f = fully[0];
+    head = `<b>${escapeHtml(f.name)}</b> (${f.bitLen} bit${f.bitLen!==1?"s":""}) `;
+  } else if (fully.length > 1) {
+    const names = fully.slice(0, 4).map(f => escapeHtml(f.name)).join(", ");
+    const more = (fully.length > 4) ? `, +${fully.length - 4}` : "";
+    head = `<b>${fully.length} fields</b> [${names}${more}] (${SEL.size} bit${SEL.size!==1?"s":""}) `;
+  } else {
+    head = `<b>${SEL.size} bit${SEL.size!==1?"s":""}</b> in ${blocks} block${blocks!==1?"s":""} `;
+  }
+  meta.innerHTML = head +
+    `· anchor: <b>${anchor}</b> · width: <b>${width}-bit</b> · ${emittedWindows} window${emittedWindows!==1?"s":""}` +
     (fully.length === 1 ? ` · value: <span class="mono">${escapeHtml(String(fully[0].hexValue))}</span>` : "");
 }
 
@@ -2493,6 +2686,13 @@ function wire() {
   for (const r of document.querySelectorAll('input[name="hdrKw"]')) {
     r.addEventListener("change", generateUDF);
   }
+  for (const r of document.querySelectorAll('input[name="aegisAnchor"], input[name="aegisWidth"]')) {
+    r.addEventListener("change", generateUDF);
+  }
+  $("aegisLocName").addEventListener("input", generateUDF);
+  for (const r of document.querySelectorAll('input[name="ruleStyle"]')) {
+    r.addEventListener("change", () => { syncRuleStyleVisibility(); generateUDF(); });
+  }
   $("btnCopy").addEventListener("click", async () => {
     // Strip the dimmed "permit ip any any " / "permit mac any any any " prefix
     // so the clipboard contains just the "payload header … offset … pattern …
@@ -2514,9 +2714,19 @@ function wire() {
   });
 }
 
+function syncRuleStyleVisibility() {
+  const style = (document.querySelector('input[name="ruleStyle"]:checked') || { value: "steering" }).value;
+  const aegisDisplay = (style === "aegis") ? "inline-flex" : "none";
+  $("hdrKwRow").style.display       = (style === "steering") ? "inline-flex" : "none";
+  $("aegisLocRow").style.display    = aegisDisplay;
+  $("aegisAnchorRow").style.display = aegisDisplay;
+  $("aegisWidthRow").style.display  = aegisDisplay;
+}
+
 wire();
 // Initial UI state for ERSPAN/MPLS sub-sections + dependent dropdowns
 syncErspanVisibility();
+syncRuleStyleVisibility();
 renderIcmpCodes();
 if ($("mplsEn").checked) renderMplsStack();
 rebuild();
