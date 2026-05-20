@@ -5,20 +5,24 @@ A single-file, self-hosted webpage for crafting Arista TapAgg User Defined Field
 the classic Traffic Steering / Policy Maps syntax and the newer Traffic Policies
 (Aegis) syntax.
 
-![Screenshot of the UDF builder showing a UDP-over-IPv4 packet with the first byte of the IPv4 header selected, and the generated rule at the bottom](docs/screenshot.png)
+![Screenshot of the UDF builder showing a TCP-over-IPv4 packet with the DSCP field selected and the Traffic Policies / Aegis output style enabled](docs/screenshot.png)
 
-*Above: a UDP-over-IPv4 packet with the **Version + IHL** byte selected. The hex
-pane shows the bytes colour-coded by layer (Ethernet → IPv4 → UDP → Payload), the
-matching field is lit up in the field tree, and the generated rule lands at the
-bottom:*
+*Above: a TCP-over-IPv4 packet with the **DSCP** field selected and the
+**Traffic Policies / Aegis** output style enabled. The hex pane shows the
+bytes colour-coded by layer (Ethernet → IPv4 → TCP → Payload), the
+matching field is lit up in the field tree, and the generated rule lands
+at the bottom:*
 
 ```
-[sequence] [permit | deny] [protocol] [source] [destination] payload header start offset 0 pattern 0x45000000 mask 0x00ffffff
+location DSCP ip-header-start offset 0 bytes length 32 bits
+location DSCP value 0x00b80000 mask 0x00fc0000
 ```
 
-*The dimmed `[sequence] [permit | deny] [protocol] [source] [destination]` part is just a placeholder
-showing where to splice the rule into your own ACL line — **Copy** puts only the
-`payload …` portion on the clipboard.*
+*The **Location** input auto-fills with the selected field's name; type
+your own to override. **Copy** puts the generated lines on the clipboard.
+Flip the **Output style** radio back to **Traffic Steering / Policy Maps**
+to get the classic `payload header end offset N pattern X mask Y` form
+instead.*
 
 ## Run it
 
