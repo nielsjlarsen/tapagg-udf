@@ -118,12 +118,16 @@ location DSCP value 0xb800 mask 0xfc00
   - `ethernet-header-end` — first byte after the 14-byte Ethernet header
     (so VLAN/MPLS tags still contribute to the offset of any IP-or-later field)
 - The **Width** radio chooses 16-bit or 32-bit match windows.
-- `offset` is in **bytes** (not 4-byte words), aligned to the chosen width
-  relative to the anchor. The builder snaps the window *down* from the first
-  selected byte so the selection is always covered.
-- The parser caps `offset` at **128 bytes**. Windows whose offset would
-  exceed that are dropped with a warning, as are windows that fall before
-  the anchor.
+- `offset` is a count of **width-sized chunks** from the anchor — i.e. each
+  unit is 2 bytes at 16-bit width or 4 bytes at 32-bit width. So matching
+  the TCP SYN flag (byte 13 of the TCP header, i.e. 13 bytes past
+  `ip-header-end`) at 16-bit width snaps to byte 12 and emits `offset 6`.
+- The window must be aligned to the chosen width relative to the anchor;
+  the builder snaps the window *down* from the first selected byte so the
+  selection is always covered.
+- The parser caps coverage at **128 bytes** from the anchor. Windows that
+  would exceed that are dropped with a warning, as are windows that fall
+  before the anchor.
 - `value` and `mask` use Aegis semantics: the `mask` enables matching —
   **1 = match this bit, 0 = don't care**. (Opposite of the steering wildcard.)
 
