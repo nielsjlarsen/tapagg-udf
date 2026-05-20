@@ -1874,9 +1874,13 @@ function escapeHtml(s) {
 // produce one rule per window, with mask = 1 for "ignore" bits.
 
 function rulePrefix(layer) {
-  // L2-anchored references → MAC ACL; anything reachable only after IP parses → IP ACL.
-  if (layer === "ethernet" || layer === "vlan" || layer === "mpls") return "permit mac any any any";
-  return "permit ip any any";
+  // Placeholder showing the syntax of the surrounding ACL line. The Copy
+  // button strips everything before "payload " so what lands on the
+  // clipboard is just the payload-match expression.
+  if (layer === "ethernet" || layer === "vlan" || layer === "mpls") {
+    return "[sequence] [permit | deny] [source] [destination] [protocol]";
+  }
+  return "[sequence] [permit | deny] [protocol] [source] [destination]";
 }
 
 function pickReferenceLayer(selBitStart) {
