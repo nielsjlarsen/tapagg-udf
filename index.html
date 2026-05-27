@@ -33,6 +33,7 @@
     --c-quic:     #ff79c6;
     --c-gre:      #4fc1ff;
     --c-erspan:   #f44747;
+    --c-arp:      #9cdcfe;
     --c-payload:  #dcdcaa;
   }
   html, body {
@@ -224,6 +225,7 @@
   .byte.quic     { background: color-mix(in srgb, var(--c-quic)     22%, transparent); }
   .byte.gre      { background: color-mix(in srgb, var(--c-gre)      22%, transparent); }
   .byte.erspan   { background: color-mix(in srgb, var(--c-erspan)   22%, transparent); }
+  .byte.arp      { background: color-mix(in srgb, var(--c-arp)      22%, transparent); }
   .byte.payload  { background: color-mix(in srgb, var(--c-payload)  22%, transparent); }
   .byte.sel {
     background: var(--sel) !important;
@@ -300,6 +302,7 @@
   .tree .group-quic     > summary { color: var(--c-quic); }
   .tree .group-gre      > summary { color: var(--c-gre); }
   .tree .group-erspan   > summary { color: var(--c-erspan); }
+  .tree .group-arp      > summary { color: var(--c-arp); }
   .tree .group-payload  > summary { color: var(--c-payload); }
   .tree details[open] > summary::before { content: "▾ "; }
   .tree details:not([open]) > summary::before { content: "▸ "; }
@@ -436,6 +439,166 @@
           <div><label>VID</label><input type="number" id="vlan2Vid" min="0" max="4095" value="200" /></div>
         </div>
       </div>
+      </div>
+    </details>
+
+    <details class="sidebarSection" id="fsLinkLayer">
+      <summary>Link Layer</summary>
+      <div class="sectionBody">
+        <label class="inline"><input type="radio" name="linkMode" value="none" checked/> None (IP / MPLS / L4 …)</label>
+        <label class="inline"><input type="radio" name="linkMode" value="tunnels"/> Tunnels (GRE / ERSPAN)</label>
+        <label class="inline"><input type="radio" name="linkMode" value="arp"/> ARP</label>
+
+        <div id="linkTunnelFields" style="display:none">
+          <label class="inline"><input type="radio" name="erspan" value="none" checked/> None</label>
+          <label class="inline"><input type="radio" name="erspan" value="gre"/> GRE (plain)</label>
+          <label class="inline"><input type="radio" name="erspan" value="2"/> ERSPAN II</label>
+          <label class="inline"><input type="radio" name="erspan" value="3"/> ERSPAN III</label>
+          <div id="erspanFields" style="display:none">
+            <div class="hint">Selecting GRE or ERSPAN forces IPv4 <span class="mono">Protocol=47</span> (GRE), hides the outer L4 / Payload sections, and exposes the inner frame builder below.</div>
+
+            <details class="optionsGroup" id="greHdrDetails" open>
+              <summary>GRE header</summary>
+              <div id="greErspanNote" class="hint" style="display:none">For ERSPAN: Flags=<span class="mono">0x1000</span> (S=1), Ver=0. Protocol Type auto: <span class="mono">0x88BE</span> for Type II, <span class="mono">0x22EB</span> for Type III.</div>
+
+              <div id="grePlainCfg" style="display:none">
+                <label>Protocol Type</label>
+                <select id="greProto">
+                  <option value="0x0800" selected>0x0800 (IPv4)</option>
+                  <option value="0x86dd">0x86DD (IPv6)</option>
+                  <option value="0x6558">0x6558 (Transparent Ethernet Bridging)</option>
+                  <option value="0x880b">0x880B (PPP)</option>
+                  <option value="0x8847">0x8847 (MPLS unicast)</option>
+                  <option value="custom">custom…</option>
+                </select>
+                <input class="mono" id="greProtoCustom" value="0x0800" style="display:none;margin-top:4px"/>
+                <div class="tcp-flags" style="margin-top:4px">
+                  <label class="inline"><input type="checkbox" id="greFlagC"/> C (checksum present)</label>
+                  <label class="inline"><input type="checkbox" id="greFlagK"/> K (key present)</label>
+                  <label class="inline"><input type="checkbox" id="greFlagS"/> S (sequence present)</label>
+                </div>
+                <div id="greKeyRow" style="display:none">
+                  <label>Key (32 bits)</label>
+                  <input class="mono" id="greKey" value="0x00000000"/>
+                </div>
+              </div>
+
+              <div id="greSeqRow">
+                <label>Sequence Number</label>
+                <input class="mono" id="greSeq" value="0x00000001"/>
+              </div>
+            </details>
+
+            <details class="optionsGroup" id="erspanCommonDetails" open>
+              <summary>ERSPAN common</summary>
+              <div class="row">
+                <div><label>VLAN</label><input type="number" id="erspanVlan" value="0" min="0" max="4095"/></div>
+                <div><label>COS</label><input type="number" id="erspanCos" value="0" min="0" max="7"/></div>
+              </div>
+              <div class="row">
+                <div><label>SPAN ID (a.k.a. Session ID / <span class="mono">erspan-id</span>)</label><input type="number" id="erspanSession" value="1" min="0" max="1023"/></div>
+                <div><label>T (truncated)</label>
+                  <select id="erspanT"><option value="0" selected>0 not truncated</option><option value="1">1 truncated</option></select>
+                </div>
+              </div>
+            </details>
+
+            <details class="optionsGroup" id="erspan2Fields" open>
+              <summary>Type II only</summary>
+              <div class="row">
+                <div><label>En (encap type)</label>
+                  <select id="erspan2En">
+                    <option value="0">0 ORIGINAL</option>
+                    <option value="1">1 ISL</option>
+                    <option value="2" selected>2 802.1Q</option>
+                    <option value="3">3 VLAN preserved</option>
+                  </select>
+                </div>
+                <div><label>Index (20 bits)</label><input type="number" id="erspan2Index" value="0" min="0" max="1048575"/></div>
+              </div>
+            </details>
+
+            <details class="optionsGroup" id="erspan3Fields" style="display:none" open>
+              <summary>Type III only</summary>
+              <div class="row">
+                <div><label>BSO</label>
+                  <select id="erspan3Bso">
+                    <option value="0" selected>00 Good</option>
+                    <option value="1">01 Short</option>
+                    <option value="2">10 Oversized</option>
+                    <option value="3">11 Bad</option>
+                  </select>
+                </div>
+                <div><label>Timestamp</label><input class="mono" id="erspan3Ts" value="0x00000000"/></div>
+              </div>
+              <div class="row">
+                <div><label>SGT</label><input type="number" id="erspan3Sgt" value="0" min="0" max="65535"/></div>
+                <div><label>P (protocol present)</label>
+                  <select id="erspan3P"><option value="0">0 not present</option><option value="1" selected>1 present</option></select>
+                </div>
+              </div>
+              <div class="row">
+                <div><label>FT (frame type)</label>
+                  <select id="erspan3Ft">
+                    <option value="0" selected>0 Ethernet</option>
+                    <option value="2">2 IP</option>
+                  </select>
+                </div>
+                <div><label>HW ID (6 bits)</label><input type="number" id="erspan3Hw" value="0" min="0" max="63"/></div>
+              </div>
+              <div class="row">
+                <div><label>D (direction)</label>
+                  <select id="erspan3D"><option value="0" selected>0 ingress</option><option value="1">1 egress</option></select>
+                </div>
+                <div><label>Gra (granularity)</label>
+                  <select id="erspan3Gra">
+                    <option value="0" selected>00 100µs</option>
+                    <option value="1">01 100ns</option>
+                    <option value="2">10 IEEE 1588</option>
+                    <option value="3">11 user</option>
+                  </select>
+                </div>
+              </div>
+              <label class="inline"><input type="checkbox" id="erspan3O"/> O – include optional 8-byte platform sub-header</label>
+              <div id="erspan3SubHdrFields" style="display:none">
+                <div class="row">
+                  <div><label>Platf ID (6 bits)</label><input type="number" id="erspan3PfId" value="0" min="0" max="63"/></div>
+                  <div><label>Info (hex, 58 bits)</label><input class="mono" id="erspan3PfInfo" value="0x000000000000000"/></div>
+                </div>
+                <div class="hint">Info is packed into the low 58 bits of the 8-byte sub-header. Anything above 58 bits is truncated.</div>
+              </div>
+            </details>
+          </div>
+        </div>
+
+        <div id="linkArpFields" style="display:none">
+          <div class="row">
+            <div><label>Hardware Type (HTYPE)</label><input class="mono" id="arpHtype" value="0x0001"/></div>
+            <div><label>Protocol Type (PTYPE)</label><input class="mono" id="arpPtype" value="0x0800"/></div>
+          </div>
+          <div class="row">
+            <div><label>HLEN</label><input type="number" id="arpHlen" value="6" min="0" max="255"/></div>
+            <div><label>PLEN</label><input type="number" id="arpPlen" value="4" min="0" max="255"/></div>
+          </div>
+          <label>Operation (OPER)</label>
+          <select id="arpOper">
+            <option value="1" selected>1 ARP Request</option>
+            <option value="2">2 ARP Reply</option>
+            <option value="3">3 RARP Request</option>
+            <option value="4">4 RARP Reply</option>
+            <option value="custom">custom…</option>
+          </select>
+          <input class="mono" id="arpOperCustom" value="1" style="display:none;margin-top:4px"/>
+          <label>Sender Hardware Address (SHA)</label>
+          <input class="mono" id="arpSha" value="00:1c:73:00:00:02"/>
+          <label>Sender Protocol Address (SPA)</label>
+          <input class="mono" id="arpSpa" value="10.1.1.1"/>
+          <label>Target Hardware Address (THA)</label>
+          <input class="mono" id="arpTha" value="00:00:00:00:00:00"/>
+          <label>Target Protocol Address (TPA)</label>
+          <input class="mono" id="arpTpa" value="10.1.1.2"/>
+          <div class="hint">For an ARP Request, THA is typically zero. The 28-byte ARP body assumes IPv4 over Ethernet (HLEN=6, PLEN=4).</div>
+        </div>
       </div>
     </details>
 
@@ -625,131 +788,6 @@
       </div>
     </details>
 
-    <details class="sidebarSection" id="fsErspan">
-      <summary>GRE / ERSPAN</summary>
-      <div class="sectionBody">
-      <label class="inline"><input type="radio" name="erspan" value="none" checked/> None</label>
-      <label class="inline"><input type="radio" name="erspan" value="gre"/> GRE (plain)</label>
-      <label class="inline"><input type="radio" name="erspan" value="2"/> ERSPAN II</label>
-      <label class="inline"><input type="radio" name="erspan" value="3"/> ERSPAN III</label>
-      <div id="erspanFields" style="display:none">
-        <div class="hint">Selecting GRE or ERSPAN forces IPv4 <span class="mono">Protocol=47</span> (GRE), hides the outer L4 / Payload sections, and exposes the inner frame builder below.</div>
-
-        <details class="optionsGroup" id="greHdrDetails" open>
-          <summary>GRE header</summary>
-          <div id="greErspanNote" class="hint" style="display:none">For ERSPAN: Flags=<span class="mono">0x1000</span> (S=1), Ver=0. Protocol Type auto: <span class="mono">0x88BE</span> for Type II, <span class="mono">0x22EB</span> for Type III.</div>
-
-          <div id="grePlainCfg" style="display:none">
-            <label>Protocol Type</label>
-            <select id="greProto">
-              <option value="0x0800" selected>0x0800 (IPv4)</option>
-              <option value="0x86dd">0x86DD (IPv6)</option>
-              <option value="0x6558">0x6558 (Transparent Ethernet Bridging)</option>
-              <option value="0x880b">0x880B (PPP)</option>
-              <option value="0x8847">0x8847 (MPLS unicast)</option>
-              <option value="custom">custom…</option>
-            </select>
-            <input class="mono" id="greProtoCustom" value="0x0800" style="display:none;margin-top:4px"/>
-            <div class="tcp-flags" style="margin-top:4px">
-              <label class="inline"><input type="checkbox" id="greFlagC"/> C (checksum present)</label>
-              <label class="inline"><input type="checkbox" id="greFlagK"/> K (key present)</label>
-              <label class="inline"><input type="checkbox" id="greFlagS"/> S (sequence present)</label>
-            </div>
-            <div id="greKeyRow" style="display:none">
-              <label>Key (32 bits)</label>
-              <input class="mono" id="greKey" value="0x00000000"/>
-            </div>
-          </div>
-
-          <div id="greSeqRow">
-            <label>Sequence Number</label>
-            <input class="mono" id="greSeq" value="0x00000001"/>
-          </div>
-        </details>
-
-        <details class="optionsGroup" id="erspanCommonDetails" open>
-          <summary>ERSPAN common</summary>
-          <div class="row">
-            <div><label>VLAN</label><input type="number" id="erspanVlan" value="0" min="0" max="4095"/></div>
-            <div><label>COS</label><input type="number" id="erspanCos" value="0" min="0" max="7"/></div>
-          </div>
-          <div class="row">
-            <div><label>SPAN ID (a.k.a. Session ID / <span class="mono">erspan-id</span>)</label><input type="number" id="erspanSession" value="1" min="0" max="1023"/></div>
-            <div><label>T (truncated)</label>
-              <select id="erspanT"><option value="0" selected>0 not truncated</option><option value="1">1 truncated</option></select>
-            </div>
-          </div>
-        </details>
-
-        <details class="optionsGroup" id="erspan2Fields" open>
-          <summary>Type II only</summary>
-          <div class="row">
-            <div><label>En (encap type)</label>
-              <select id="erspan2En">
-                <option value="0">0 ORIGINAL</option>
-                <option value="1">1 ISL</option>
-                <option value="2" selected>2 802.1Q</option>
-                <option value="3">3 VLAN preserved</option>
-              </select>
-            </div>
-            <div><label>Index (20 bits)</label><input type="number" id="erspan2Index" value="0" min="0" max="1048575"/></div>
-          </div>
-        </details>
-
-        <details class="optionsGroup" id="erspan3Fields" style="display:none" open>
-          <summary>Type III only</summary>
-          <div class="row">
-            <div><label>BSO</label>
-              <select id="erspan3Bso">
-                <option value="0" selected>00 Good</option>
-                <option value="1">01 Short</option>
-                <option value="2">10 Oversized</option>
-                <option value="3">11 Bad</option>
-              </select>
-            </div>
-            <div><label>Timestamp</label><input class="mono" id="erspan3Ts" value="0x00000000"/></div>
-          </div>
-          <div class="row">
-            <div><label>SGT</label><input type="number" id="erspan3Sgt" value="0" min="0" max="65535"/></div>
-            <div><label>P (protocol present)</label>
-              <select id="erspan3P"><option value="0">0 not present</option><option value="1" selected>1 present</option></select>
-            </div>
-          </div>
-          <div class="row">
-            <div><label>FT (frame type)</label>
-              <select id="erspan3Ft">
-                <option value="0" selected>0 Ethernet</option>
-                <option value="2">2 IP</option>
-              </select>
-            </div>
-            <div><label>HW ID (6 bits)</label><input type="number" id="erspan3Hw" value="0" min="0" max="63"/></div>
-          </div>
-          <div class="row">
-            <div><label>D (direction)</label>
-              <select id="erspan3D"><option value="0" selected>0 ingress</option><option value="1">1 egress</option></select>
-            </div>
-            <div><label>Gra (granularity)</label>
-              <select id="erspan3Gra">
-                <option value="0" selected>00 100µs</option>
-                <option value="1">01 100ns</option>
-                <option value="2">10 IEEE 1588</option>
-                <option value="3">11 user</option>
-              </select>
-            </div>
-          </div>
-          <label class="inline"><input type="checkbox" id="erspan3O"/> O – include optional 8-byte platform sub-header</label>
-          <div id="erspan3SubHdrFields" style="display:none">
-            <div class="row">
-              <div><label>Platf ID (6 bits)</label><input type="number" id="erspan3PfId" value="0" min="0" max="63"/></div>
-              <div><label>Info (hex, 58 bits)</label><input class="mono" id="erspan3PfInfo" value="0x000000000000000"/></div>
-            </div>
-            <div class="hint">Info is packed into the low 58 bits of the 8-byte sub-header. Anything above 58 bits is truncated.</div>
-          </div>
-        </details>
-      </div>
-      </div>
-    </details>
-
     <details class="sidebarSection" id="innerFrameFs" style="display:none">
       <summary>Inner frame (captured by ERSPAN)</summary>
       <div class="sectionBody">
@@ -832,6 +870,7 @@
     <div class="legend-bar">
       <span><span class="sw" style="background:var(--c-ethernet)"></span>Ethernet</span>
       <span><span class="sw" style="background:var(--c-vlan)"></span>VLAN</span>
+      <span><span class="sw" style="background:var(--c-arp)"></span>ARP</span>
       <span><span class="sw" style="background:var(--c-mpls)"></span>MPLS</span>
       <span><span class="sw" style="background:var(--c-ip)"></span>IPv4</span>
       <span><span class="sw" style="background:var(--c-tcp)"></span>TCP</span>
@@ -986,8 +1025,13 @@ function buildPacket() {
   function markLayerEnd(name)   { layers[name].byteLen = bytes.length - layers[name].byteStart; }
 
   // --- read top-level mode ------------------------------------------------
-  const erspanType  = document.querySelector('input[name="erspan"]:checked').value; // "none"|"2"|"3"
-  const mplsEnabled = $("mplsEn").checked;
+  const linkMode    = (document.querySelector('input[name="linkMode"]:checked') || { value: "none" }).value;
+  // Only honour the ERSPAN radio when Link Layer = Tunnels; otherwise a
+  // leftover selection mustn't bleed into None/ARP packets.
+  const erspanType  = (linkMode === "tunnels")
+    ? document.querySelector('input[name="erspan"]:checked').value  // "none"|"gre"|"2"|"3"
+    : "none";
+  const mplsEnabled = (linkMode !== "arp") && $("mplsEn").checked;
 
   // ---------- Ethernet ----------
   markLayerStart("ethernet");
@@ -1036,10 +1080,41 @@ function buildPacket() {
     markLayerEnd("vlan" + i);
   }
 
-  // EtherType – 0x8847 if MPLS, else 0x0800 (IPv4)
-  const outerEthertype = mplsEnabled ? 0x8847 : 0x0800;
-  pushField("ethernet", "EtherType", [(outerEthertype>>8)&0xff, outerEthertype&0xff], { hexValue: "0x" + hex4(outerEthertype) + (mplsEnabled ? " (MPLS)" : " (IPv4)") });
+  // EtherType – 0x0806 (ARP), 0x8847 (MPLS), else 0x0800 (IPv4)
+  const outerEthertype = (linkMode === "arp") ? 0x0806 : (mplsEnabled ? 0x8847 : 0x0800);
+  const ethertypeNote  = (linkMode === "arp") ? " (ARP)" : (mplsEnabled ? " (MPLS)" : " (IPv4)");
+  pushField("ethernet", "EtherType", [(outerEthertype>>8)&0xff, outerEthertype&0xff], { hexValue: "0x" + hex4(outerEthertype) + ethertypeNote });
   markLayerEnd("ethernet");
+
+  // ---------- ARP body (short-circuits MPLS / IPv4 / L4 / payload / tunnel) ----------
+  if (linkMode === "arp") {
+    markLayerStart("arp");
+    const htype = parseHex16($("arpHtype").value);
+    const ptype = parseHex16($("arpPtype").value);
+    const hlen  = (+$("arpHlen").value) & 0xff;
+    const plen  = (+$("arpPlen").value) & 0xff;
+    const operSel = $("arpOper").value;
+    const oper  = (operSel === "custom") ? parseHex16($("arpOperCustom").value) : ((+operSel) & 0xffff);
+    const operLabel = ({1:"Request", 2:"Reply", 3:"RARP Request", 4:"RARP Reply"})[oper] || "?";
+
+    pushU16("arp", "ARP Hardware Type (HTYPE)", htype, "0x" + hex4(htype) + (htype === 1 ? " (Ethernet)" : ""));
+    pushU16("arp", "ARP Protocol Type (PTYPE)", ptype, "0x" + hex4(ptype) + (ptype === 0x0800 ? " (IPv4)" : ""));
+    pushU8 ("arp", "ARP HLEN", hlen, String(hlen));
+    pushU8 ("arp", "ARP PLEN", plen, String(plen));
+    pushU16("arp", "ARP Operation (OPER)", oper, String(oper) + " (" + operLabel + ")");
+
+    const sha = parseMac($("arpSha").value);
+    pushField("arp", "ARP Sender HW Addr (SHA)",    sha, { hexValue: sha.map(hex2).join(":") });
+    const spa = parseIp($("arpSpa").value);
+    pushField("arp", "ARP Sender Proto Addr (SPA)", spa, { hexValue: spa.join(".") });
+    const tha = parseMac($("arpTha").value);
+    pushField("arp", "ARP Target HW Addr (THA)",    tha, { hexValue: tha.map(hex2).join(":") });
+    const tpa = parseIp($("arpTpa").value);
+    pushField("arp", "ARP Target Proto Addr (TPA)", tpa, { hexValue: tpa.join(".") });
+    markLayerEnd("arp");
+
+    return { bytes, fields, layers, l4Type: "none", ipStartByte: 0, ipHdrLen: 0, erspanType: "none", mplsEnabled: false, linkMode };
+  }
 
   // ---------- MPLS label stack (if enabled) ----------
   if (mplsEnabled) {
@@ -1768,7 +1843,7 @@ function layerCategory(layer) {
   if (layer === "in-tcp")      return "tcp";
   if (layer === "in-udp")      return "udp";
   if (layer === "in-payload")  return "payload";
-  return layer; // ethernet, ip, tcp, udp, icmp, gre, erspan, payload
+  return layer; // ethernet, ip, tcp, udp, icmp, gre, erspan, arp, payload
 }
 
 function layerOfByte(byteIdx) {
@@ -1778,7 +1853,7 @@ function layerOfByte(byteIdx) {
   const order = [
     "in-payload","in-udp","in-tcp","in-ip","in-vlan","in-ethernet",
     "erspan","gre",
-    "payload","quic","icmp","sctp","udp","tcp","ip",
+    "payload","quic","icmp","sctp","udp","tcp","ip","arp",
     "mpls5","mpls4","mpls3","mpls2","mpls1","mpls0",
     "vlan1","vlan0","ethernet",
   ];
@@ -1979,6 +2054,7 @@ function layerLabel(layer) {
     case "quic":         return "QUIC";
     case "gre":          return "GRE";
     case "erspan":       return "ERSPAN";
+    case "arp":          return "ARP";
     case "payload":      return "Payload";
     case "in-ethernet":  return "Inner Ethernet";
     case "in-vlan":      return "Inner VLAN";
@@ -2030,10 +2106,19 @@ function pickReferenceLayer(selBitStart, kw) {
   const order = [
     "in-payload","in-udp","in-tcp","in-ip","in-vlan","in-ethernet",
     "erspan","gre",
-    "payload","quic","icmp","sctp","udp","tcp","ip",
+    "payload","quic","icmp","sctp","udp","tcp","ip","arp",
     "mpls5","mpls4","mpls3","mpls2","mpls1","mpls0",
     "vlan1","vlan0","ethernet",
   ];
+
+  // ARP-only packets have no IP layer. For selections inside ARP, anchor on
+  // Ethernet (header end) so offset 0 lands on the first ARP byte, or on the
+  // ARP layer itself for header start. Selections BEFORE ARP (Ethernet/VLAN
+  // bytes) fall through to the existing L2 fallback below.
+  if (!L.ip && L.arp && (kw === "header end" || kw === "header start")
+      && byte >= L.arp.byteStart) {
+    return (kw === "header start") ? "arp" : "ethernet";
+  }
 
   // Both Arista anchors ("header start" and "header end") are measured
   // relative to the IP (L3) header. Everything after IP — GRE, ERSPAN,
@@ -2041,7 +2126,8 @@ function pickReferenceLayer(selBitStart, kw) {
   // a non-zero offset from one of those two anchors, not at offset 0 of
   // its own layer.
   if (kw === "header end" || kw === "header start") {
-    if (byte < (L.ip ? L.ip.byteStart : 0)) {
+    const l3Start = L.ip ? L.ip.byteStart : (L.arp ? L.arp.byteStart : 0);
+    if (byte < l3Start) {
       // Selection is before the IP header (raw L2 / VLAN / MPLS bytes) –
       // anchoring on IP doesn't make sense, so fall back to the closest L2
       // layer. For "header end" pick the layer whose end sits before the
@@ -2527,6 +2613,34 @@ function renderIcmpCodes() {
   $("icmpCodeCustom").style.display = (sel.value === "custom") ? "" : "none";
 }
 
+function syncLinkLayerVisibility() {
+  const mode = (document.querySelector('input[name="linkMode"]:checked') || { value: "none" }).value;
+  $("linkTunnelFields").style.display = (mode === "tunnels") ? "" : "none";
+  $("linkArpFields").style.display    = (mode === "arp")     ? "" : "none";
+
+  // When leaving Tunnels, snap the ERSPAN radio back to "none" so the packet
+  // build doesn't keep emitting GRE.
+  if (mode !== "tunnels") {
+    const r = document.querySelector('input[name="erspan"][value="none"]');
+    if (r) r.checked = true;
+  }
+
+  // Re-run the ERSPAN sync first so inner-frame / outer-L4 visibility lands
+  // on the right state for the current tunnel selection.
+  syncErspanVisibility();
+
+  // ARP fully replaces everything past Ethernet → hide those sections.
+  // Order matters: this must run AFTER syncErspanVisibility(), which would
+  // otherwise un-hide L4/Payload when the ERSPAN radio is "none".
+  const arpOn = (mode === "arp");
+  $("fsMpls").style.display    = arpOn ? "none" : "";
+  $("fsIp").style.display      = arpOn ? "none" : "";
+  $("fsL4").style.display      = arpOn ? "none" : "";
+  $("fsPayload").style.display = arpOn ? "none" : "";
+
+  if (mode === "tunnels" || mode === "arp") $("fsLinkLayer").open = true;
+}
+
 function syncErspanVisibility() {
   const v = (document.querySelector('input[name="erspan"]:checked') || { value: "none" }).value;
   const on   = v !== "none";
@@ -2551,7 +2665,7 @@ function syncErspanVisibility() {
   $("payloadNoteErspan").style.display = on ? "" : "none";
 
   if (on) {
-    $("fsErspan").open = true;
+    $("fsLinkLayer").open = true;
     $("innerFrameFs").open = true;
   }
 }
@@ -2636,6 +2750,14 @@ function wire() {
   });
   $("icmpCode").addEventListener("change", () => {
     $("icmpCodeCustom").style.display = ($("icmpCode").value === "custom") ? "" : "none";
+  });
+
+  // Link Layer mode (None / Tunnels / ARP)
+  for (const r of document.querySelectorAll('input[name="linkMode"]')) {
+    r.addEventListener("change", () => { syncLinkLayerVisibility(); rebuild(); });
+  }
+  $("arpOper").addEventListener("change", () => {
+    $("arpOperCustom").style.display = ($("arpOper").value === "custom") ? "" : "none";
   });
 
   // ERSPAN
@@ -2733,6 +2855,7 @@ function syncRuleStyleVisibility() {
 wire();
 // Initial UI state for ERSPAN/MPLS sub-sections + dependent dropdowns
 syncErspanVisibility();
+syncLinkLayerVisibility();
 syncRuleStyleVisibility();
 renderIcmpCodes();
 if ($("mplsEn").checked) renderMplsStack();
