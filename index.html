@@ -977,7 +977,13 @@ function parseMac(s) {
   return out;
 }
 function parseIp(s) {
-  return s.split(".").map((x) => parseInt(x, 10) & 0xff);
+  // Always return exactly 4 bytes. Missing/short input → 0.0.0.0; extra
+  // octets are dropped. parseInt(undefined, 10) is NaN, and NaN & 0xff = 0,
+  // so empty slots correctly fall back to 0.
+  const parts = (s || "").split(".");
+  const out = [];
+  for (let i = 0; i < 4; i++) out.push(parseInt(parts[i], 10) & 0xff);
+  return out;
 }
 function hex2(n) { return n.toString(16).padStart(2, "0"); }
 function hex4(n) { return n.toString(16).padStart(4, "0"); }
