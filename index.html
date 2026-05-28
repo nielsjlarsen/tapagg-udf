@@ -2795,6 +2795,19 @@ function wire() {
     $("inIpProtoCustom").style.display = ($("inIpProto").value === "custom") ? "" : "none";
   });
 
+  // If an IP-address input is cleared, snap it back to "0.0.0.0" on blur so
+  // the visible value matches the bytes the packet actually carries.
+  for (const id of ["ipSrc", "ipDst", "inIpSrc", "inIpDst", "arpSpa", "arpTpa"]) {
+    const el = $(id);
+    if (!el) continue;
+    el.addEventListener("blur", () => {
+      if (!el.value.trim()) {
+        el.value = "0.0.0.0";
+        el.dispatchEvent(new Event("change", { bubbles: true }));
+      }
+    });
+  }
+
   // Rebuild on any change
   document.querySelectorAll(".sidebar input, .sidebar select").forEach((el) => {
     el.addEventListener("change", rebuild);
